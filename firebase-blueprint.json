@@ -1,0 +1,124 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile information",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "role": { "type": "string", "enum": ["admin", "student", "staff", "volunteer"] },
+        "displayName": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "email", "role"]
+    },
+    "Donation": {
+      "title": "Donation",
+      "description": "Donation records",
+      "type": "object",
+      "properties": {
+        "amount": { "type": "number" },
+        "currency": { "type": "string" },
+        "donorEmail": { "type": "string", "format": "email" },
+        "donorName": { "type": "string" },
+        "status": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["amount", "donorEmail"]
+    },
+    "Donor": {
+      "title": "Donor",
+      "description": "Donor profile information",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "totalDonated": { "type": "number" },
+        "lastDonationDate": { "type": "string" },
+        "status": { "type": "string" }
+      },
+      "required": ["name", "email"]
+    },
+    "Application": {
+      "title": "Application",
+      "description": "Student applications",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "ageTrack": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "approved", "rejected"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "ageTrack", "status"]
+    },
+    "BlogPost": {
+      "title": "BlogPost",
+      "description": "Blog post content",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "excerpt": { "type": "string" },
+        "content": { "type": "string" },
+        "author": { "type": "string" },
+        "date": { "type": "string" },
+        "image_url": { "type": "string" },
+        "tags": { "type": "string" },
+        "status": { "type": "string", "enum": ["draft", "published"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["title", "content", "author", "status"]
+    },
+    "School": {
+      "title": "School",
+      "description": "Partner schools",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "location": { "type": "string" },
+        "studentCount": { "type": "number" },
+        "contactPerson": { "type": "string" },
+        "partnershipDate": { "type": "string" }
+      },
+      "required": ["name", "location"]
+    },
+    "Facilitator": {
+      "title": "Facilitator",
+      "description": "Foundation facilitators",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "expertise": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "phone": { "type": "string" },
+        "status": { "type": "string" }
+      },
+      "required": ["name", "email"]
+    },
+    "GalleryItem": {
+      "title": "GalleryItem",
+      "description": "Media items in the gallery",
+      "type": "object",
+      "properties": {
+        "url": { "type": "string" },
+        "caption": { "type": "string" },
+        "category": { "type": "string" },
+        "date": { "type": "string" },
+        "type": { "type": "string", "enum": ["image", "video"] },
+        "thumbnail": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["url", "type"]
+    }
+  },
+  "firestore": {
+    "/users": { "schema": "User", "description": "User profiles" },
+    "/donations": { "schema": "Donation", "description": "Donation records" },
+    "/donors": { "schema": "Donor", "description": "Donor profiles" },
+    "/applications": { "schema": "Application", "description": "Student applications" },
+    "/blogs": { "schema": "BlogPost", "description": "Blog posts" },
+    "/schools": { "schema": "School", "description": "Partner schools" },
+    "/facilitators": { "schema": "Facilitator", "description": "Facilitators" },
+    "/gallery": { "schema": "GalleryItem", "description": "Gallery media items" }
+  }
+}

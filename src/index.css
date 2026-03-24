@@ -1,0 +1,33 @@
+@import url('https://fonts.googleapis.com/css2?family=Open+Sans:wght@300;400;500;600;700;800&family=Raleway:wght@400;500;600;700;800&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Open Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Raleway", sans-serif;
+  
+  --color-primary: #003366;
+  --color-accent: #D4AF37;
+  --color-accent-hover: #B8860B;
+}
+
+@layer base {
+  body {
+    @apply bg-slate-50 text-slate-900 font-sans;
+  }
+  
+  h1, h2, h3, h4 {
+    @apply font-display font-bold;
+  }
+}
+
+.glass-card {
+  @apply bg-white/80 backdrop-blur-md border border-white/20 shadow-xl;
+}
+
+.btn-primary {
+  @apply bg-primary text-white px-6 py-3 rounded-xl font-semibold transition-all hover:bg-primary/90 hover:scale-[1.02] active:scale-[0.98];
+}
+
+.btn-accent {
+  @apply bg-accent text-white px-6 py-3 rounded-xl font-semibold transition-all hover:bg-accent-hover hover:scale-[1.02] active:scale-[0.98];
+}
