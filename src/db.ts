@@ -107,7 +107,28 @@ db.exec(`
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (user_id) REFERENCES users(id)
   );
+
+  CREATE TABLE IF NOT EXISTS media_library (
+    id TEXT PRIMARY KEY,
+    title TEXT NOT NULL,
+    url TEXT NOT NULL,
+    file_path TEXT NOT NULL,
+    category TEXT,
+    type TEXT DEFAULT 'image', -- image, video
+    thumbnail TEXT,
+    uploaded_by TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (uploaded_by) REFERENCES users(id)
+  );
 `);
+
+// Add type and thumbnail columns if they don't exist (for existing databases)
+try {
+  db.exec("ALTER TABLE media_library ADD COLUMN type TEXT DEFAULT 'image'");
+} catch (e) {}
+try {
+  db.exec("ALTER TABLE media_library ADD COLUMN thumbnail TEXT");
+} catch (e) {}
 
 // Add frequency column if it doesn't exist (for existing databases)
 try {

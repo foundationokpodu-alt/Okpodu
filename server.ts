@@ -2,7 +2,7 @@ import express from "express";
 import { createServer as createViteServer } from "vite";
 import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
-import db from "./src/db.js"; 
+import db from "./src/db.ts"; 
 import { v4 as uuidv4 } from "uuid";
 import dotenv from "dotenv";
 import crypto from "crypto";
@@ -36,7 +36,7 @@ const storage = multer.diskStorage({
 
 const upload = multer({ 
   storage: storage,
-  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB limit
+  limits: { fileSize: 50 * 1024 * 1024 }, // 50MB limit
 });
 
 app.use(express.json({
@@ -136,6 +136,21 @@ app.post("/api/applications/student", authenticate, (req: any, res) => {
 });
 
 // Admin Dashboard Data
+// Delete donation
+app.delete("/api/admin/donations/:id", authenticate, authorize(['admin']), (req, res) => {
+  try {
+    const { id } = req.params;
+    const result = db.prepare("DELETE FROM donations WHERE id = ?").run(id);
+    if (result.changes === 0) {
+      return res.status(404).json({ error: "Donation not found" });
+    }
+    res.json({ message: "Donation deleted successfully" });
+  } catch (err) {
+    console.error("Error deleting donation:", err);
+    res.status(500).json({ error: "Failed to delete donation" });
+  }
+});
+
 app.get("/api/admin/stats", authenticate, authorize(['admin']), (req, res) => {
   const userCount = db.prepare("SELECT COUNT(*) as count FROM users").get() as any;
   const studentApps = db.prepare("SELECT COUNT(*) as count FROM students WHERE application_status = 'pending'").get() as any;
@@ -232,6 +247,56 @@ app.post("/api/donations/webhook", (req, res) => {
   res.status(200).send("Webhook received");
 });
 
+// Media Library (SQLite)
+app.get("/api/media-library", (req, res) => {
+  try {
+    const media = db.prepare("SELECT * FROM media_library ORDER BY created_at DESC").all();
+    res.json(media);
+  } catch (err) {
+    console.error("Error fetching media library:", err);
+    res.status(500).json({ error: "Failed to fetch media library" });
+  }
+});
+
+app.post("/api/media-library", authenticate, upload.single('file'), (req: any, res) => {
+  if (!req.file) {
+    return res.status(400).json({ error: "No file uploaded" });
+  }
+  const { title, category, type, thumbnail } = req.body;
+  const id = uuidv4();
+  const fileUrl = `/uploads/${req.file.filename}`;
+  const filePath = req.file.path;
+  
+  try {
+    db.prepare("INSERT INTO media_library (id, title, url, file_path, category, type, thumbnail, uploaded_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
+      .run(id, title || req.file.originalname, fileUrl, filePath, category || 'general', type || 'image', thumbnail || null, req.user.id);
+    res.json({ id, url: fileUrl, title: title || req.file.originalname, type: type || 'image' });
+  } catch (err) {
+    console.error("Error saving to media library:", err);
+    res.status(500).json({ error: "Failed to save to media library" });
+  }
+});
+
+app.delete("/api/media-library/:id", authenticate, (req, res) => {
+  const { id } = req.params;
+  try {
+    const item: any = db.prepare("SELECT * FROM media_library WHERE id = ?").get(id);
+    if (!item) return res.status(404).json({ error: "Media not found" });
+    
+    // Delete from disk
+    if (fs.existsSync(item.file_path)) {
+      fs.unlinkSync(item.file_path);
+    }
+    
+    // Delete from DB
+    db.prepare("DELETE FROM media_library WHERE id = ?").run(id);
+    res.json({ message: "Media deleted successfully" });
+  } catch (err) {
+    console.error("Error deleting from media library:", err);
+    res.status(500).json({ error: "Failed to delete from media library" });
+  }
+});
+
 // File Upload
 app.post("/api/upload/media", authenticate, authorize(['admin']), upload.single('file'), (req: any, res) => {
   if (!req.file) {
@@ -239,6 +304,23 @@ app.post("/api/upload/media", authenticate, authorize(['admin']), upload.single(
   }
   const fileUrl = `/uploads/${req.file.filename}`;
   res.json({ url: fileUrl });
+});
+
+app.delete("/api/upload/media/:filename", authenticate, authorize(['admin']), (req, res) => {
+  const { filename } = req.params;
+  const filePath = path.join(uploadDir, filename);
+  
+  if (fs.existsSync(filePath)) {
+    try {
+      fs.unlinkSync(filePath);
+      res.json({ message: "File deleted successfully" });
+    } catch (err) {
+      console.error("Error deleting file:", err);
+      res.status(500).json({ error: "Failed to delete file from disk" });
+    }
+  } else {
+    res.status(404).json({ error: "File not found" });
+  }
 });
 
 // Serve static uploads
@@ -253,7 +335,11 @@ async function startServer() {
     });
     app.use(vite.middlewares);
   } else {
-    app.use(express.static("dist"));
+    const distPath = path.join(process.cwd(), "dist");
+    app.use(express.static(distPath));
+    app.get("*", (req, res) => {
+      res.sendFile(path.join(distPath, "index.html"));
+    });
   }
 
   // Bootstrap default admin

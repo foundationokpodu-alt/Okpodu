@@ -20,6 +20,48 @@ import { db, auth, handleFirestoreError, OperationType, googleProvider } from '.
 import { collection, addDoc, deleteDoc, doc, serverTimestamp, query, orderBy, onSnapshot, getDoc } from 'firebase/firestore';
 import { signInWithEmailAndPassword, onAuthStateChanged, signOut, User, signInWithPopup } from 'firebase/auth';
 
+const exportToCSV = (objArray: any[]) => {
+  if (objArray.length === 0) return '';
+  const array = objArray;
+  let str = '';
+  const headers = Object.keys(array[0]).join(',');
+  str += headers + '\r\n';
+
+  for (let i = 0; i < array.length; i++) {
+    let line = '';
+    for (const index in array[i]) {
+      if (line !== '') line += ',';
+      let value = array[i][index];
+      if (typeof value === 'string') {
+        value = `"${value.replace(/"/g, '""')}"`;
+      } else if (typeof value === 'object' && value !== null) {
+        try {
+          value = `"${JSON.stringify(value).replace(/"/g, '""')}"`;
+        } catch (e) {
+          value = `"${String(value).replace(/"/g, '""')}"`;
+        }
+      }
+      line += value;
+    }
+    str += line + '\r\n';
+  }
+  return str;
+};
+
+const downloadCSV = (csv: string, filename: string) => {
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const link = document.createElement("a");
+  if (link.download !== undefined) {
+    const url = URL.createObjectURL(blob);
+    link.setAttribute("href", url);
+    link.setAttribute("download", filename);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  }
+};
+
 const ConfirmationModal = ({ 
   isOpen, 
   onClose, 
@@ -53,8 +95,8 @@ const ConfirmationModal = ({
                 Cancel
               </button>
               <button 
-                onClick={() => {
-                  onConfirm();
+                onClick={async () => {
+                  await onConfirm();
                   onClose();
                 }}
                 className="flex-1 py-3 bg-red-500 text-white font-bold rounded-xl shadow-lg hover:bg-red-600 transition-all"
@@ -94,22 +136,44 @@ const AdminPortal = ({ galleryMedia, setGalleryMedia }: AdminPortalProps) => {
           
           // Default admin check based on email (matching firestore.rules)
           const isDefaultAdmin = currentUser.email?.toLowerCase() === "hogiugo@gmail.com" || 
-                               currentUser.email?.toLowerCase() === "gigaactiv@gmail.com";
+                                currentUser.email?.toLowerCase() === "gigaactiv@gmail.com";
           
           const isAdminUser = userData?.role === 'admin' || isDefaultAdmin;
-          setIsAdmin(isAdminUser);
 
-          // Sync backend token if missing
-          if (isAdminUser && !localStorage.getItem('token') && currentUser.email) {
+          // If they are a default admin but don't have a Firestore doc, create it
+          if (isDefaultAdmin && !userData) {
+            try {
+              const { setDoc, doc, serverTimestamp } = await import('firebase/firestore');
+              await setDoc(doc(db, 'users', currentUser.uid), {
+                uid: currentUser.uid,
+                email: currentUser.email?.toLowerCase(),
+                role: 'admin',
+                displayName: currentUser.displayName || 'Admin User',
+                createdAt: serverTimestamp()
+              }, { merge: true });
+              console.log("Admin user document created in Firestore");
+            } catch (err: any) {
+              console.error("Failed to create admin user document:", err?.message || String(err));
+            }
+          }
+
+          // Always sync backend token if admin, to ensure it's fresh
+          if (isAdminUser && currentUser.email) {
             try {
               const response = await axios.post('/api/auth/firebase-login', { email: currentUser.email });
               localStorage.setItem('token', response.data.token);
-            } catch (err) {
-              console.error("Failed to sync backend token:", err);
+              console.log("Backend token synchronized");
+              setIsAdmin(true);
+            } catch (err: any) {
+              console.error("Failed to sync backend token:", err?.message || String(err));
+              // Still set isAdmin if they are an admin, even if token sync fails (though APIs will fail)
+              setIsAdmin(true);
             }
+          } else {
+            setIsAdmin(false);
           }
-        } catch (error) {
-          console.error("Error checking admin status:", error);
+        } catch (error: any) {
+          console.error("Error checking admin status:", error?.message || String(error));
           setIsAdmin(false);
         }
       } else {
@@ -137,7 +201,7 @@ const AdminPortal = ({ galleryMedia, setGalleryMedia }: AdminPortalProps) => {
         console.warn("Backend login failed, admin stats might not load", err);
       }
     } catch (error: any) {
-      console.error("Login failed:", error);
+      console.error("Login failed:", error?.message || String(error));
       setAuthError(error.message || "Invalid email or password");
     }
   };
@@ -156,7 +220,7 @@ const AdminPortal = ({ galleryMedia, setGalleryMedia }: AdminPortalProps) => {
         }
       }
     } catch (error: any) {
-      console.error("Google login failed:", error);
+      console.error("Google login failed:", error?.message || String(error));
       setAuthError(error.message || "Google sign-in failed");
     }
   };
@@ -164,8 +228,8 @@ const AdminPortal = ({ galleryMedia, setGalleryMedia }: AdminPortalProps) => {
   const handleLogout = async () => {
     try {
       await signOut(auth);
-    } catch (error) {
-      console.error("Logout failed:", error);
+    } catch (error: any) {
+      console.error("Logout failed:", error?.message || String(error));
     }
   };
 
@@ -274,9 +338,21 @@ const AdminPortal = ({ galleryMedia, setGalleryMedia }: AdminPortalProps) => {
     { id: 'documents', label: 'Document Library', icon: FileText },
     { id: 'reports', label: 'Impact Reports', icon: BarChart3 },
     { id: 'gallery', label: 'Media Archive', icon: Image },
+    { id: 'media_library', label: 'Media Library', icon: Package },
     { id: 'assets', label: 'Asset Inventory', icon: Package },
     { id: 'governance', label: 'Governance', icon: Shield },
   ];
+
+  const handleExportData = () => {
+    window.dispatchEvent(new CustomEvent('admin:export-data', { detail: { tab: activeTab } }));
+  };
+
+  const handleAddNew = () => {
+    // Dispatch event or set state to open the relevant "Add New" modal in sub-components
+    // For now, we'll use a custom event that sub-components can listen to
+    const event = new CustomEvent('admin:add-new', { detail: { tab: activeTab } });
+    window.dispatchEvent(event);
+  };
 
   return (
     <div className="flex min-h-screen bg-slate-50 pt-20">
@@ -318,17 +394,23 @@ const AdminPortal = ({ galleryMedia, setGalleryMedia }: AdminPortalProps) => {
             >
               <LogOut size={16} /> Sign Out
             </button>
-            <button className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-50">
+            <button 
+              onClick={handleExportData}
+              className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-50"
+            >
               <Download size={16} /> Export Data
             </button>
-            <button className="flex items-center gap-2 px-4 py-2 bg-accent text-white rounded-lg text-sm font-medium hover:bg-accent-hover shadow-md">
+            <button 
+              onClick={handleAddNew}
+              className="flex items-center gap-2 px-4 py-2 bg-accent text-white rounded-lg text-sm font-medium hover:bg-accent-hover shadow-md"
+            >
               <Plus size={16} /> Add New
             </button>
           </div>
         </header>
 
         <div className="bg-white rounded-3xl shadow-sm border border-slate-100 p-6">
-          {activeTab === 'dashboard' && <DashboardOverview />}
+          {activeTab === 'dashboard' && <DashboardOverview onSwitchTab={setActiveTab} />}
           {activeTab === 'applications' && <ApplicationsManagement />}
           {activeTab === 'donors' && <DonorsManagement />}
           {activeTab === 'blog' && <BlogManagement />}
@@ -337,6 +419,7 @@ const AdminPortal = ({ galleryMedia, setGalleryMedia }: AdminPortalProps) => {
           {activeTab === 'documents' && <DocumentLibrary />}
           {activeTab === 'reports' && <ImpactReports />}
           {activeTab === 'gallery' && <PhotoArchive images={galleryMedia} setImages={setGalleryMedia} />}
+          {activeTab === 'media_library' && <MediaLibrary images={galleryMedia} setImages={setGalleryMedia} />}
           {activeTab === 'assets' && <AssetInventory />}
           {activeTab === 'governance' && <GovernanceTools />}
         </div>
@@ -347,7 +430,7 @@ const AdminPortal = ({ galleryMedia, setGalleryMedia }: AdminPortalProps) => {
 
 // --- Sub-components ---
 
-const DashboardOverview = () => {
+const DashboardOverview = ({ onSwitchTab }: { onSwitchTab: (tab: string) => void }) => {
   const [stats, setStats] = useState({
     totalUsers: 0,
     activePrograms: 4,
@@ -356,6 +439,27 @@ const DashboardOverview = () => {
   });
   const [activities, setActivities] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const handleAddNewEvent = (e: any) => {
+      if (e.detail.tab === 'dashboard') {
+        // No specific action for dashboard, maybe show a hint
+      }
+    };
+    window.addEventListener('admin:add-new', handleAddNewEvent);
+    return () => window.removeEventListener('admin:add-new', handleAddNewEvent);
+  }, []);
+
+  useEffect(() => {
+    const handleExportEvent = (e: any) => {
+      if (e.detail.tab === 'dashboard') {
+        const csv = exportToCSV([stats]);
+        downloadCSV(csv, `dashboard_stats_export_${new Date().toISOString().split('T')[0]}.csv`);
+      }
+    };
+    window.addEventListener('admin:export-data', handleExportEvent);
+    return () => window.removeEventListener('admin:export-data', handleExportEvent);
+  }, [stats]);
 
   useEffect(() => {
     const fetchStats = async () => {
@@ -406,10 +510,10 @@ const DashboardOverview = () => {
   }, []);
 
   const cards = [
-    { label: 'Total Users', value: stats.totalUsers.toString(), icon: Users, color: 'bg-blue-50 text-blue-600' },
-    { label: 'Active Programs', value: stats.activePrograms.toString(), icon: BookOpen, color: 'bg-emerald-50 text-emerald-600' },
-    { label: 'Total Donations', value: `₦${stats.totalDonations.toLocaleString()}`, icon: CreditCard, color: 'bg-purple-50 text-purple-600' },
-    { label: 'Pending Applications', value: stats.pendingApps.toString(), icon: FileText, color: 'bg-orange-50 text-orange-600' },
+    { id: 'facilitators', label: 'Total Users', value: stats.totalUsers.toString(), icon: Users, color: 'bg-blue-50 text-blue-600' },
+    { id: 'schools', label: 'Active Programs', value: stats.activePrograms.toString(), icon: BookOpen, color: 'bg-emerald-50 text-emerald-600' },
+    { id: 'donors', label: 'Total Donations', value: `₦${stats.totalDonations.toLocaleString()}`, icon: CreditCard, color: 'bg-purple-50 text-purple-600' },
+    { id: 'applications', label: 'Pending Applications', value: stats.pendingApps.toString(), icon: FileText, color: 'bg-orange-50 text-orange-600' },
   ];
 
   return (
@@ -417,8 +521,16 @@ const DashboardOverview = () => {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         {cards.map((card) => (
           <div key={card.label} className="p-6 rounded-3xl border border-slate-100 bg-white shadow-sm hover:shadow-md transition-shadow">
-            <div className={`w-12 h-12 rounded-2xl ${card.color} flex items-center justify-center mb-4`}>
-              <card.icon size={24} />
+            <div className="flex justify-between items-start mb-4">
+              <div className={`w-12 h-12 rounded-2xl ${card.color} flex items-center justify-center`}>
+                <card.icon size={24} />
+              </div>
+              <button 
+                onClick={() => onSwitchTab(card.id)}
+                className="text-xs font-bold text-primary hover:underline flex items-center gap-1"
+              >
+                View All <ChevronRight size={12} />
+              </button>
             </div>
             <p className="text-sm text-slate-500 font-medium">{card.label}</p>
             <h3 className="text-2xl font-bold text-slate-900 mt-1">{loading ? '...' : card.value}</h3>
@@ -428,7 +540,15 @@ const DashboardOverview = () => {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
         <div className="p-6 rounded-3xl border border-slate-100 bg-white">
-          <h3 className="text-lg font-bold text-slate-900 mb-4">Recent Activity</h3>
+          <div className="flex justify-between items-center mb-4">
+            <h3 className="text-lg font-bold text-slate-900">Recent Activity</h3>
+            <button 
+              onClick={() => onSwitchTab('applications')}
+              className="text-xs font-bold text-primary hover:underline"
+            >
+              View All
+            </button>
+          </div>
           <div className="space-y-4">
             {activities.map((activity) => (
               <div key={activity.id} className="flex items-center gap-4 p-3 rounded-2xl hover:bg-slate-50 transition-colors">
@@ -449,13 +569,45 @@ const DashboardOverview = () => {
         <div className="p-6 rounded-3xl border border-slate-100 bg-white">
           <h3 className="text-lg font-bold text-slate-900 mb-4">Quick Actions</h3>
           <div className="grid grid-cols-2 gap-4">
-            <button className="p-4 rounded-2xl bg-slate-50 border border-slate-100 text-left hover:border-primary transition-all group">
+            <button 
+              onClick={() => {
+                onSwitchTab('blog');
+                setTimeout(() => window.dispatchEvent(new CustomEvent('admin:add-new', { detail: { tab: 'blog' } })), 100);
+              }}
+              className="p-4 rounded-2xl bg-slate-50 border border-slate-100 text-left hover:border-primary transition-all group"
+            >
               <Plus size={20} className="text-slate-400 group-hover:text-primary mb-2" />
               <p className="text-sm font-bold text-slate-900">New Blog Post</p>
             </button>
-            <button className="p-4 rounded-2xl bg-slate-50 border border-slate-100 text-left hover:border-primary transition-all group">
+            <button 
+              onClick={() => {
+                onSwitchTab('media_library');
+                setTimeout(() => window.dispatchEvent(new CustomEvent('admin:add-new', { detail: { tab: 'media_library' } })), 100);
+              }}
+              className="p-4 rounded-2xl bg-slate-50 border border-slate-100 text-left hover:border-primary transition-all group"
+            >
               <Upload size={20} className="text-slate-400 group-hover:text-primary mb-2" />
               <p className="text-sm font-bold text-slate-900">Upload Media</p>
+            </button>
+            <button 
+              onClick={() => {
+                onSwitchTab('donors');
+                setTimeout(() => window.dispatchEvent(new CustomEvent('admin:add-new', { detail: { tab: 'donors' } })), 100);
+              }}
+              className="p-4 rounded-2xl bg-slate-50 border border-slate-100 text-left hover:border-primary transition-all group"
+            >
+              <CreditCard size={20} className="text-slate-400 group-hover:text-primary mb-2" />
+              <p className="text-sm font-bold text-slate-900">New Donation</p>
+            </button>
+            <button 
+              onClick={() => {
+                onSwitchTab('schools');
+                setTimeout(() => window.dispatchEvent(new CustomEvent('admin:add-new', { detail: { tab: 'schools' } })), 100);
+              }}
+              className="p-4 rounded-2xl bg-slate-50 border border-slate-100 text-left hover:border-primary transition-all group"
+            >
+              <School size={20} className="text-slate-400 group-hover:text-primary mb-2" />
+              <p className="text-sm font-bold text-slate-900">Update Schools</p>
             </button>
           </div>
         </div>
@@ -467,6 +619,34 @@ const DashboardOverview = () => {
 const ApplicationsManagement = () => {
   const [applications, setApplications] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [showModal, setShowModal] = useState(false);
+  const [newApp, setNewApp] = useState({
+    userId: '',
+    ageTrack: 'Children (6-12)',
+    status: 'pending',
+    notes: ''
+  });
+
+  useEffect(() => {
+    const handleAddNewEvent = (e: any) => {
+      if (e.detail.tab === 'applications') {
+        setShowModal(true);
+      }
+    };
+    window.addEventListener('admin:add-new', handleAddNewEvent);
+    return () => window.removeEventListener('admin:add-new', handleAddNewEvent);
+  }, []);
+
+  useEffect(() => {
+    const handleExportEvent = (e: any) => {
+      if (e.detail.tab === 'applications') {
+        const csv = exportToCSV(applications);
+        downloadCSV(csv, `applications_export_${new Date().toISOString().split('T')[0]}.csv`);
+      }
+    };
+    window.addEventListener('admin:export-data', handleExportEvent);
+    return () => window.removeEventListener('admin:export-data', handleExportEvent);
+  }, [applications]);
 
   useEffect(() => {
     const q = query(collection(db, 'applications'), orderBy('createdAt', 'desc'));
@@ -480,6 +660,24 @@ const ApplicationsManagement = () => {
     return unsubscribe;
   }, []);
 
+  const handleCreateApplication = async () => {
+    try {
+      await addDoc(collection(db, 'applications'), {
+        ...newApp,
+        createdAt: serverTimestamp()
+      });
+      setShowModal(false);
+      setNewApp({
+        userId: '',
+        ageTrack: 'Children (6-12)',
+        status: 'pending',
+        notes: ''
+      });
+    } catch (err) {
+      handleFirestoreError(err, OperationType.CREATE, 'applications');
+    }
+  };
+
   const handleUpdateStatus = async (id: string, status: string) => {
     try {
       const { updateDoc, doc } = await import('firebase/firestore');
@@ -489,10 +687,74 @@ const ApplicationsManagement = () => {
     }
   };
 
+  const handleDelete = async (id: string, name: string) => {
+    if (window.confirm(`Are you sure you want to delete application from ${name}?`)) {
+      try {
+        const { deleteDoc, doc } = await import('firebase/firestore');
+        await deleteDoc(doc(db, 'applications', id));
+      } catch (err) {
+        handleFirestoreError(err, OperationType.DELETE, `applications/${id}`);
+      }
+    }
+  };
+
   if (loading) return <div className="flex justify-center p-12"><div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" /></div>;
 
   return (
     <div className="overflow-x-auto">
+      {showModal && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[100] flex items-center justify-center p-6">
+          <motion.div 
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="bg-white rounded-3xl w-full max-w-md p-8 shadow-2xl"
+          >
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="text-2xl font-bold text-primary">Add Application</h3>
+              <button onClick={() => setShowModal(false)} className="p-2 hover:bg-slate-100 rounded-full"><X size={24} /></button>
+            </div>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-bold text-slate-700 mb-1">User ID / Name</label>
+                <input 
+                  type="text" 
+                  value={newApp.userId}
+                  onChange={e => setNewApp({...newApp, userId: e.target.value})}
+                  className="w-full p-3 rounded-xl border border-slate-200"
+                  placeholder="Applicant Identifier"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-bold text-slate-700 mb-1">Age Track</label>
+                <select 
+                  value={newApp.ageTrack}
+                  onChange={e => setNewApp({...newApp, ageTrack: e.target.value})}
+                  className="w-full p-3 rounded-xl border border-slate-200"
+                >
+                  <option>Children (6-12)</option>
+                  <option>Teenagers (13-19)</option>
+                  <option>Young Adults (20-35)</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-bold text-slate-700 mb-1">Notes</label>
+                <textarea 
+                  value={newApp.notes}
+                  onChange={e => setNewApp({...newApp, notes: e.target.value})}
+                  className="w-full p-3 rounded-xl border border-slate-200 h-24"
+                  placeholder="Additional information..."
+                />
+              </div>
+              <button 
+                onClick={handleCreateApplication}
+                className="w-full py-4 bg-primary text-white font-bold rounded-xl shadow-lg hover:bg-primary/90 transition-all mt-4"
+              >
+                Create Application
+              </button>
+            </div>
+          </motion.div>
+        </div>
+      )}
       <table className="w-full text-left">
         <thead>
           <tr className="border-b border-slate-100">
@@ -536,6 +798,13 @@ const ApplicationsManagement = () => {
                   >
                     <X size={16} />
                   </button>
+                  <button 
+                    onClick={() => handleDelete(app.id, app.userId)}
+                    className="p-1 text-slate-300 hover:text-red-500 rounded"
+                    title="Delete"
+                  >
+                    <Trash2 size={16} />
+                  </button>
                 </div>
               </td>
             </tr>
@@ -554,47 +823,106 @@ const ApplicationsManagement = () => {
 const DonorsManagement = () => {
   const [donations, setDonations] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [showModal, setShowModal] = useState(false);
+  const [newDonation, setNewDonation] = useState({
+    donor_name: '',
+    donor_email: '',
+    amount: 0,
+    status: 'success',
+    frequency: 'one-time',
+    reference: `MANUAL-${Date.now()}`
+  });
   const [confirmConfig, setConfirmConfig] = useState<{ isOpen: boolean, onConfirm: () => void, title?: string, message?: string }>({
     isOpen: false,
     onConfirm: () => {},
   });
 
   useEffect(() => {
-    const fetchDonations = async () => {
-      try {
-        const token = localStorage.getItem('token');
-        if (!token) {
-          console.warn("No admin token found, skipping donations fetch");
-          setLoading(false);
-          return;
-        }
-        const response = await axios.get('/api/admin/donations', {
-          headers: { Authorization: `Bearer ${token}` }
-        });
-        setDonations(response.data);
-      } catch (error: any) {
-        if (error.response?.status === 401) {
-          console.error("Unauthorized: Admin token may be invalid or expired");
-        } else {
-          console.error("Failed to fetch donations:", error);
-        }
-      } finally {
-        setLoading(false);
+    const handleAddNewEvent = (e: any) => {
+      if (e.detail.tab === 'donors') {
+        setShowModal(true);
       }
     };
+    window.addEventListener('admin:add-new', handleAddNewEvent);
+    return () => window.removeEventListener('admin:add-new', handleAddNewEvent);
+  }, []);
 
+  useEffect(() => {
+    const handleExportEvent = (e: any) => {
+      if (e.detail.tab === 'donors') {
+        const csv = exportToCSV(donations);
+        downloadCSV(csv, `donations_export_${new Date().toISOString().split('T')[0]}.csv`);
+      }
+    };
+    window.addEventListener('admin:export-data', handleExportEvent);
+    return () => window.removeEventListener('admin:export-data', handleExportEvent);
+  }, [donations]);
+
+  const fetchDonations = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      if (!token) {
+        console.warn("No admin token found, skipping donations fetch");
+        setLoading(false);
+        return;
+      }
+      const response = await axios.get('/api/admin/donations', {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      setDonations(response.data);
+    } catch (error: any) {
+      if (error.response?.status === 401) {
+        console.error("Unauthorized: Admin token may be invalid or expired");
+      } else {
+        console.error("Failed to fetch donations:", error);
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
     fetchDonations();
   }, []);
 
+  const handleCreateDonation = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      await axios.post('/api/admin/donations', newDonation, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      setShowModal(false);
+      setNewDonation({
+        donor_name: '',
+        donor_email: '',
+        amount: 0,
+        status: 'success',
+        frequency: 'one-time',
+        reference: `MANUAL-${Date.now()}`
+      });
+      fetchDonations();
+    } catch (err) {
+      console.error("Failed to create donation:", err);
+      alert("Failed to create donation record.");
+    }
+  };
+
   const handleDeleteDonation = (id: string) => {
-    // Implement delete via API if needed, for now just UI confirmation
     setConfirmConfig({
       isOpen: true,
       title: "Delete Donation Record",
       message: "Are you sure you want to delete this donation record? This action cannot be undone.",
       onConfirm: async () => {
-        // In a real app, call DELETE /api/admin/donations/:id
-        setDonations(donations.filter(d => d.id !== id));
+        try {
+          const token = localStorage.getItem('token');
+          await axios.delete(`/api/admin/donations/${id}`, {
+            headers: { Authorization: `Bearer ${token}` }
+          });
+          setDonations(donations.filter(d => d.id.toString() !== id.toString()));
+        } catch (err) {
+          console.error("Failed to delete donation:", err);
+          alert("Failed to delete donation record.");
+        }
       }
     });
   };
@@ -616,6 +944,72 @@ const DonorsManagement = () => {
         title={confirmConfig.title}
         message={confirmConfig.message}
       />
+
+      {showModal && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[100] flex items-center justify-center p-6">
+          <motion.div 
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="bg-white rounded-3xl w-full max-w-md p-8 shadow-2xl"
+          >
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="text-2xl font-bold text-primary">Add Donation Record</h3>
+              <button onClick={() => setShowModal(false)} className="p-2 hover:bg-slate-100 rounded-full"><X size={24} /></button>
+            </div>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-bold text-slate-700 mb-1">Donor Name</label>
+                <input 
+                  type="text" 
+                  value={newDonation.donor_name}
+                  onChange={e => setNewDonation({...newDonation, donor_name: e.target.value})}
+                  className="w-full p-3 rounded-xl border border-slate-200"
+                  placeholder="Full Name"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-bold text-slate-700 mb-1">Donor Email</label>
+                <input 
+                  type="email" 
+                  value={newDonation.donor_email}
+                  onChange={e => setNewDonation({...newDonation, donor_email: e.target.value})}
+                  className="w-full p-3 rounded-xl border border-slate-200"
+                  placeholder="email@example.com"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-bold text-slate-700 mb-1">Amount (₦)</label>
+                  <input 
+                    type="number" 
+                    value={newDonation.amount}
+                    onChange={e => setNewDonation({...newDonation, amount: parseInt(e.target.value) || 0})}
+                    className="w-full p-3 rounded-xl border border-slate-200"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-bold text-slate-700 mb-1">Frequency</label>
+                  <select 
+                    value={newDonation.frequency}
+                    onChange={e => setNewDonation({...newDonation, frequency: e.target.value})}
+                    className="w-full p-3 rounded-xl border border-slate-200"
+                  >
+                    <option value="one-time">One-time</option>
+                    <option value="monthly">Monthly</option>
+                    <option value="yearly">Yearly</option>
+                  </select>
+                </div>
+              </div>
+              <button 
+                onClick={handleCreateDonation}
+                className="w-full py-4 bg-primary text-white font-bold rounded-xl shadow-lg hover:bg-primary/90 transition-all mt-4"
+              >
+                Save Record
+              </button>
+            </div>
+          </motion.div>
+        </div>
+      )}
       <div className="flex justify-between items-center">
         <h3 className="text-xl font-bold text-slate-900">Donation History</h3>
         <div className="flex gap-2">
@@ -699,6 +1093,27 @@ const BlogManagement = () => {
     image_url: '',
     tags: ''
   });
+
+  useEffect(() => {
+    const handleAddNewEvent = (e: any) => {
+      if (e.detail.tab === 'blog') {
+        setShowModal(true);
+      }
+    };
+    window.addEventListener('admin:add-new', handleAddNewEvent);
+    return () => window.removeEventListener('admin:add-new', handleAddNewEvent);
+  }, []);
+
+  useEffect(() => {
+    const handleExportEvent = (e: any) => {
+      if (e.detail.tab === 'blog') {
+        const csv = exportToCSV(posts);
+        downloadCSV(csv, `blog_posts_export_${new Date().toISOString().split('T')[0]}.csv`);
+      }
+    };
+    window.addEventListener('admin:export-data', handleExportEvent);
+    return () => window.removeEventListener('admin:export-data', handleExportEvent);
+  }, [posts]);
 
   useEffect(() => {
     const q = query(collection(db, 'blogs'), orderBy('createdAt', 'desc'));
@@ -1006,10 +1421,40 @@ const BlogManagement = () => {
 const SchoolDatabase = () => {
   const [schools, setSchools] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [showModal, setShowModal] = useState(false);
+  const [newSchool, setNewSchool] = useState({
+    name: '',
+    location: '',
+    studentCount: 0,
+    contactPerson: '',
+    partnershipDate: new Date().toISOString().split('T')[0],
+    type: 'Primary'
+  });
   const [confirmConfig, setConfirmConfig] = useState<{ isOpen: boolean, onConfirm: () => void, title?: string, message?: string }>({
     isOpen: false,
     onConfirm: () => {},
   });
+
+  useEffect(() => {
+    const handleAddNewEvent = (e: any) => {
+      if (e.detail.tab === 'schools') {
+        setShowModal(true);
+      }
+    };
+    window.addEventListener('admin:add-new', handleAddNewEvent);
+    return () => window.removeEventListener('admin:add-new', handleAddNewEvent);
+  }, []);
+
+  useEffect(() => {
+    const handleExportEvent = (e: any) => {
+      if (e.detail.tab === 'schools') {
+        const csv = exportToCSV(schools);
+        downloadCSV(csv, `schools_export_${new Date().toISOString().split('T')[0]}.csv`);
+      }
+    };
+    window.addEventListener('admin:export-data', handleExportEvent);
+    return () => window.removeEventListener('admin:export-data', handleExportEvent);
+  }, [schools]);
 
   useEffect(() => {
     const unsubscribe = onSnapshot(collection(db, 'schools'), (snapshot) => {
@@ -1022,6 +1467,27 @@ const SchoolDatabase = () => {
     return unsubscribe;
   }, []);
 
+  const handleCreateSchool = async () => {
+    try {
+      await addDoc(collection(db, 'schools'), {
+        ...newSchool,
+        studentCount: Number(newSchool.studentCount),
+        createdAt: serverTimestamp()
+      });
+      setShowModal(false);
+      setNewSchool({
+        name: '',
+        location: '',
+        studentCount: 0,
+        contactPerson: '',
+        partnershipDate: new Date().toISOString().split('T')[0],
+        type: 'Primary'
+      });
+    } catch (err) {
+      handleFirestoreError(err, OperationType.CREATE, 'schools');
+    }
+  };
+
   if (loading) return <div className="flex justify-center p-12"><div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" /></div>;
 
   return (
@@ -1033,6 +1499,91 @@ const SchoolDatabase = () => {
         title={confirmConfig.title}
         message={confirmConfig.message}
       />
+
+      {showModal && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[100] flex items-center justify-center p-6">
+          <motion.div 
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="bg-white rounded-3xl w-full max-w-md p-8 shadow-2xl"
+          >
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="text-2xl font-bold text-primary">Add New School</h3>
+              <button onClick={() => setShowModal(false)} className="p-2 hover:bg-slate-100 rounded-full"><X size={24} /></button>
+            </div>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-bold text-slate-700 mb-1">School Name</label>
+                <input 
+                  type="text" 
+                  value={newSchool.name}
+                  onChange={e => setNewSchool({...newSchool, name: e.target.value})}
+                  className="w-full p-3 rounded-xl border border-slate-200"
+                  placeholder="e.g. Ovu Primary School"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-bold text-slate-700 mb-1">Location</label>
+                <input 
+                  type="text" 
+                  value={newSchool.location}
+                  onChange={e => setNewSchool({...newSchool, location: e.target.value})}
+                  className="w-full p-3 rounded-xl border border-slate-200"
+                  placeholder="e.g. Oviore, Delta State"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-bold text-slate-700 mb-1">Student Count</label>
+                  <input 
+                    type="number" 
+                    value={newSchool.studentCount}
+                    onChange={e => setNewSchool({...newSchool, studentCount: parseInt(e.target.value) || 0})}
+                    className="w-full p-3 rounded-xl border border-slate-200"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-bold text-slate-700 mb-1">Type</label>
+                  <select 
+                    value={newSchool.type}
+                    onChange={e => setNewSchool({...newSchool, type: e.target.value})}
+                    className="w-full p-3 rounded-xl border border-slate-200"
+                  >
+                    <option>Primary</option>
+                    <option>Secondary</option>
+                  </select>
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-bold text-slate-700 mb-1">Contact Person</label>
+                <input 
+                  type="text" 
+                  value={newSchool.contactPerson}
+                  onChange={e => setNewSchool({...newSchool, contactPerson: e.target.value})}
+                  className="w-full p-3 rounded-xl border border-slate-200"
+                  placeholder="Head Teacher Name"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-bold text-slate-700 mb-1">Partnership Date</label>
+                <input 
+                  type="date" 
+                  value={newSchool.partnershipDate}
+                  onChange={e => setNewSchool({...newSchool, partnershipDate: e.target.value})}
+                  className="w-full p-3 rounded-xl border border-slate-200"
+                />
+              </div>
+              <button 
+                onClick={handleCreateSchool}
+                className="w-full py-4 bg-primary text-white font-bold rounded-xl shadow-lg hover:bg-primary/90 transition-all mt-4"
+              >
+                Register School
+              </button>
+            </div>
+          </motion.div>
+        </div>
+      )}
+
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {schools.map((school) => (
           <div key={school.id} className="p-6 rounded-2xl border border-slate-100 hover:shadow-md transition-shadow">
@@ -1087,10 +1638,39 @@ const SchoolDatabase = () => {
 const FacilitatorDatabase = () => {
   const [facilitators, setFacilitators] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [showModal, setShowModal] = useState(false);
+  const [newFacilitator, setNewFacilitator] = useState({
+    name: '',
+    expertise: '',
+    email: '',
+    phone: '',
+    status: 'active'
+  });
   const [confirmConfig, setConfirmConfig] = useState<{ isOpen: boolean, onConfirm: () => void, title?: string, message?: string }>({
     isOpen: false,
     onConfirm: () => {},
   });
+
+  useEffect(() => {
+    const handleAddNewEvent = (e: any) => {
+      if (e.detail.tab === 'facilitators') {
+        setShowModal(true);
+      }
+    };
+    window.addEventListener('admin:add-new', handleAddNewEvent);
+    return () => window.removeEventListener('admin:add-new', handleAddNewEvent);
+  }, []);
+
+  useEffect(() => {
+    const handleExportEvent = (e: any) => {
+      if (e.detail.tab === 'facilitators') {
+        const csv = exportToCSV(facilitators);
+        downloadCSV(csv, `facilitators_export_${new Date().toISOString().split('T')[0]}.csv`);
+      }
+    };
+    window.addEventListener('admin:export-data', handleExportEvent);
+    return () => window.removeEventListener('admin:export-data', handleExportEvent);
+  }, [facilitators]);
 
   useEffect(() => {
     const unsubscribe = onSnapshot(collection(db, 'facilitators'), (snapshot) => {
@@ -1103,6 +1683,25 @@ const FacilitatorDatabase = () => {
     return unsubscribe;
   }, []);
 
+  const handleCreateFacilitator = async () => {
+    try {
+      await addDoc(collection(db, 'facilitators'), {
+        ...newFacilitator,
+        createdAt: serverTimestamp()
+      });
+      setShowModal(false);
+      setNewFacilitator({
+        name: '',
+        expertise: '',
+        email: '',
+        phone: '',
+        status: 'active'
+      });
+    } catch (err) {
+      handleFirestoreError(err, OperationType.CREATE, 'facilitators');
+    }
+  };
+
   if (loading) return <div className="flex justify-center p-12"><div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" /></div>;
 
   return (
@@ -1114,6 +1713,81 @@ const FacilitatorDatabase = () => {
         title={confirmConfig.title}
         message={confirmConfig.message}
       />
+
+      {showModal && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[100] flex items-center justify-center p-6">
+          <motion.div 
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="bg-white rounded-3xl w-full max-w-md p-8 shadow-2xl"
+          >
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="text-2xl font-bold text-primary">Add New Facilitator</h3>
+              <button onClick={() => setShowModal(false)} className="p-2 hover:bg-slate-100 rounded-full"><X size={24} /></button>
+            </div>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-bold text-slate-700 mb-1">Full Name</label>
+                <input 
+                  type="text" 
+                  value={newFacilitator.name}
+                  onChange={e => setNewFacilitator({...newFacilitator, name: e.target.value})}
+                  className="w-full p-3 rounded-xl border border-slate-200"
+                  placeholder="e.g. Dr. Jane Smith"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-bold text-slate-700 mb-1">Expertise</label>
+                <input 
+                  type="text" 
+                  value={newFacilitator.expertise}
+                  onChange={e => setNewFacilitator({...newFacilitator, expertise: e.target.value})}
+                  className="w-full p-3 rounded-xl border border-slate-200"
+                  placeholder="e.g. Data Science, Web Dev"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-bold text-slate-700 mb-1">Email</label>
+                <input 
+                  type="email" 
+                  value={newFacilitator.email}
+                  onChange={e => setNewFacilitator({...newFacilitator, email: e.target.value})}
+                  className="w-full p-3 rounded-xl border border-slate-200"
+                  placeholder="facilitator@example.com"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-bold text-slate-700 mb-1">Phone</label>
+                <input 
+                  type="tel" 
+                  value={newFacilitator.phone}
+                  onChange={e => setNewFacilitator({...newFacilitator, phone: e.target.value})}
+                  className="w-full p-3 rounded-xl border border-slate-200"
+                  placeholder="+234 ..."
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-bold text-slate-700 mb-1">Status</label>
+                <select 
+                  value={newFacilitator.status}
+                  onChange={e => setNewFacilitator({...newFacilitator, status: e.target.value})}
+                  className="w-full p-3 rounded-xl border border-slate-200"
+                >
+                  <option value="active">Active</option>
+                  <option value="inactive">Inactive</option>
+                </select>
+              </div>
+              <button 
+                onClick={handleCreateFacilitator}
+                className="w-full py-4 bg-primary text-white font-bold rounded-xl shadow-lg hover:bg-primary/90 transition-all mt-4"
+              >
+                Register Facilitator
+              </button>
+            </div>
+          </motion.div>
+        </div>
+      )}
+
       <table className="w-full text-left">
         <thead>
           <tr className="border-b border-slate-100">
@@ -1180,6 +1854,27 @@ const DocumentLibrary = () => {
     isOpen: false,
     onConfirm: () => {},
   });
+
+  useEffect(() => {
+    const handleAddNewEvent = (e: any) => {
+      if (e.detail.tab === 'documents') {
+        setShowUploadModal(true);
+      }
+    };
+    window.addEventListener('admin:add-new', handleAddNewEvent);
+    return () => window.removeEventListener('admin:add-new', handleAddNewEvent);
+  }, []);
+
+  useEffect(() => {
+    const handleExportEvent = (e: any) => {
+      if (e.detail.tab === 'documents') {
+        const csv = exportToCSV(documents);
+        downloadCSV(csv, `documents_export_${new Date().toISOString().split('T')[0]}.csv`);
+      }
+    };
+    window.addEventListener('admin:export-data', handleExportEvent);
+    return () => window.removeEventListener('admin:export-data', handleExportEvent);
+  }, [documents]);
 
   useEffect(() => {
     const unsubscribe = onSnapshot(collection(db, 'documents'), (snapshot) => {
@@ -1277,6 +1972,7 @@ const DocumentLibrary = () => {
           </div>
         </div>
       )}
+
       <div className="flex gap-4 mb-6">
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
@@ -1341,6 +2037,27 @@ const ImpactReports = () => {
     isOpen: false,
     onConfirm: () => {},
   });
+
+  useEffect(() => {
+    const handleAddNewEvent = (e: any) => {
+      if (e.detail.tab === 'reports') {
+        handleGenerateReport('Quarterly');
+      }
+    };
+    window.addEventListener('admin:add-new', handleAddNewEvent);
+    return () => window.removeEventListener('admin:add-new', handleAddNewEvent);
+  }, []);
+
+  useEffect(() => {
+    const handleExportEvent = (e: any) => {
+      if (e.detail.tab === 'reports') {
+        const csv = exportToCSV(reports);
+        downloadCSV(csv, `reports_export_${new Date().toISOString().split('T')[0]}.csv`);
+      }
+    };
+    window.addEventListener('admin:export-data', handleExportEvent);
+    return () => window.removeEventListener('admin:export-data', handleExportEvent);
+  }, [reports]);
 
   useEffect(() => {
     const unsubscribe = onSnapshot(collection(db, 'reports'), (snapshot) => {
@@ -1444,6 +2161,72 @@ const PhotoArchive = ({ images, setImages }: { images: GalleryMedia[], setImages
     onConfirm: () => {},
   });
 
+  useEffect(() => {
+    const handleAddNewEvent = (e: any) => {
+      if (e.detail.tab === 'gallery') {
+        setShowUploadModal(true);
+      }
+    };
+    window.addEventListener('admin:add-new', handleAddNewEvent);
+    return () => window.removeEventListener('admin:add-new', handleAddNewEvent);
+  }, []);
+
+  useEffect(() => {
+    const handleExportEvent = (e: any) => {
+      if (e.detail.tab === 'gallery') {
+        const csv = exportToCSV(images);
+        downloadCSV(csv, `gallery_export_${new Date().toISOString().split('T')[0]}.csv`);
+      }
+    };
+    window.addEventListener('admin:export-data', handleExportEvent);
+    return () => window.removeEventListener('admin:export-data', handleExportEvent);
+  }, [images]);
+
+  const handleDeleteMedia = async (item: GalleryMedia) => {
+    setConfirmConfig({
+      isOpen: true,
+      title: "Delete Media",
+      message: `Are you sure you want to delete this ${item.type}? This action cannot be undone.`,
+      onConfirm: async () => {
+        try {
+          const token = localStorage.getItem('token');
+          await axios.delete(`/api/media-library/${item.id}`, {
+            headers: { Authorization: `Bearer ${token}` }
+          });
+          // Update local state
+          setImages(prev => prev.filter(img => img.id !== item.id));
+        } catch (err) {
+          console.error("Delete failed:", err);
+          // Use toast if available, or just log
+        }
+      }
+    });
+  };
+
+  const handleSeedGallery = async () => {
+    setUploading(true);
+    setUploadError(null);
+    try {
+      for (const item of GALLERY_MEDIA) {
+        const mediaData: any = {
+          url: item.url,
+          caption: item.caption,
+          category: item.category,
+          date: item.date,
+          type: item.type,
+          createdAt: serverTimestamp()
+        };
+        if (item.thumbnail) mediaData.thumbnail = item.thumbnail;
+        await addDoc(collection(db, 'gallery'), mediaData);
+      }
+      // No need to manually update state, onSnapshot will handle it
+    } catch (err) {
+      handleFirestoreError(err, OperationType.CREATE, 'gallery');
+    } finally {
+      setUploading(false);
+    }
+  };
+
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
       const files = Array.from(e.target.files) as File[];
@@ -1473,11 +2256,15 @@ const PhotoArchive = ({ images, setImages }: { images: GalleryMedia[], setImages
     try {
       for (let i = 0; i < selectedFiles.length; i++) {
         const item = selectedFiles[i];
-        const formData = new FormData();
-        formData.append('file', item.file);
 
         try {
-          const response = await axios.post('/api/upload/media', formData, {
+          const formData = new FormData();
+          formData.append('file', item.file);
+          formData.append('title', bulkCaption || `${item.type === 'video' ? 'Video' : 'Image'} ${images.length + i + 1}`);
+          formData.append('category', bulkCategory);
+          formData.append('type', item.type);
+
+          const response = await axios.post('/api/media-library', formData, {
             headers: {
               'Authorization': `Bearer ${token}`,
               'Content-Type': 'multipart/form-data'
@@ -1488,28 +2275,18 @@ const PhotoArchive = ({ images, setImages }: { images: GalleryMedia[], setImages
             }
           });
 
-          const mediaData = {
+          uploadedMedia.push({
+            id: response.data.id.toString(),
             url: response.data.url,
-            caption: bulkCaption || `${item.type === 'video' ? 'Video' : 'Image'} ${images.length + i + 1}`,
+            caption: response.data.title,
             category: bulkCategory,
             date: new Date().toISOString().split('T')[0],
             type: item.type,
-            thumbnail: item.type === 'video' ? 'https://images.unsplash.com/photo-1492724441997-5dc865305da7?auto=format&fit=crop&q=80&w=400' : undefined,
-            createdAt: serverTimestamp()
-          };
-
-          // Save to Firestore
-          const docRef = await addDoc(collection(db, 'gallery'), mediaData);
-          
-          uploadedMedia.push({
-            id: docRef.id,
-            ...mediaData
+            thumbnail: item.type === 'video' ? 'https://images.unsplash.com/photo-1492724441997-5dc865305da7?auto=format&fit=crop&q=80&w=400' : undefined
           } as any);
         } catch (err: any) {
           console.error(`Failed to upload file ${i}:`, err);
           hasError = true;
-          // If it's a Firestore error, we can use handleFirestoreError but we don't want it to break the whole loop if we want to continue
-          // However, for now, let's just set a more specific error if it's an axios error
           if (err.response) {
             setUploadError(`Upload failed for file ${i + 1}: ${err.response.data.error || err.message}`);
           } else {
@@ -1587,6 +2364,8 @@ const PhotoArchive = ({ images, setImages }: { images: GalleryMedia[], setImages
                       <option value="Programs">Programs</option>
                       <option value="Events">Events</option>
                       <option value="Community">Community</option>
+                      <option value="Impact">Impact</option>
+                      <option value="General">General</option>
                     </select>
                   </div>
                   <div>
@@ -1680,6 +2459,26 @@ const PhotoArchive = ({ images, setImages }: { images: GalleryMedia[], setImages
         </div>
       )}
 
+      <div className="flex justify-between items-center mb-4">
+        <h3 className="text-xl font-bold text-slate-900">Media Archive</h3>
+        {images.length === 0 && (
+          <button 
+            onClick={handleSeedGallery}
+            disabled={uploading}
+            className="px-4 py-2 bg-slate-100 text-slate-600 rounded-xl text-sm font-bold hover:bg-slate-200 transition-all flex items-center gap-2"
+          >
+            {uploading ? <div className="w-4 h-4 border-2 border-slate-400 border-t-transparent rounded-full animate-spin" /> : <Plus size={16} />}
+            Seed Default Media
+          </button>
+        )}
+      </div>
+
+      {uploadError && !showUploadModal && (
+        <div className="p-4 bg-red-50 text-red-600 rounded-2xl text-sm font-medium border border-red-100 mb-4">
+          {uploadError}
+        </div>
+      )}
+
       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
         {images.map((item) => (
           <div key={item.id} className="group relative aspect-square rounded-[15px] overflow-hidden border border-slate-100 shadow-sm bg-slate-50">
@@ -1700,20 +2499,7 @@ const PhotoArchive = ({ images, setImages }: { images: GalleryMedia[], setImages
             <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
               <button className="p-2 bg-white rounded-full text-slate-900 hover:bg-accent hover:text-white transition-colors"><Edit size={16} /></button>
               <button 
-                onClick={() => {
-                  setConfirmConfig({
-                    isOpen: true,
-                    title: "Delete Media",
-                    message: "Are you sure you want to delete this media item?",
-                    onConfirm: async () => {
-                      try {
-                        await deleteDoc(doc(db, 'gallery', item.id));
-                      } catch (err) {
-                        handleFirestoreError(err, OperationType.DELETE, `gallery/${item.id}`);
-                      }
-                    }
-                  });
-                }}
+                onClick={() => handleDeleteMedia(item)}
                 className="p-2 bg-white rounded-full text-red-500 hover:bg-red-500 hover:text-white transition-colors"
               >
                 <Trash2 size={16} />
@@ -1739,10 +2525,38 @@ const PhotoArchive = ({ images, setImages }: { images: GalleryMedia[], setImages
 const AssetInventory = () => {
   const [assets, setAssets] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [showModal, setShowModal] = useState(false);
+  const [newAsset, setNewAsset] = useState({
+    name: '',
+    category: 'Equipment',
+    quantity: 1,
+    status: 'Good'
+  });
   const [confirmConfig, setConfirmConfig] = useState<{ isOpen: boolean, onConfirm: () => void, title?: string, message?: string }>({
     isOpen: false,
     onConfirm: () => {},
   });
+
+  useEffect(() => {
+    const handleAddNewEvent = (e: any) => {
+      if (e.detail.tab === 'assets') {
+        setShowModal(true);
+      }
+    };
+    window.addEventListener('admin:add-new', handleAddNewEvent);
+    return () => window.removeEventListener('admin:add-new', handleAddNewEvent);
+  }, []);
+
+  useEffect(() => {
+    const handleExportEvent = (e: any) => {
+      if (e.detail.tab === 'assets') {
+        const csv = exportToCSV(assets);
+        downloadCSV(csv, `assets_export_${new Date().toISOString().split('T')[0]}.csv`);
+      }
+    };
+    window.addEventListener('admin:export-data', handleExportEvent);
+    return () => window.removeEventListener('admin:export-data', handleExportEvent);
+  }, [assets]);
 
   useEffect(() => {
     const unsubscribe = onSnapshot(collection(db, 'assets'), (snapshot) => {
@@ -1755,6 +2569,25 @@ const AssetInventory = () => {
     return unsubscribe;
   }, []);
 
+  const handleCreateAsset = async () => {
+    try {
+      await addDoc(collection(db, 'assets'), {
+        ...newAsset,
+        quantity: Number(newAsset.quantity),
+        createdAt: serverTimestamp()
+      });
+      setShowModal(false);
+      setNewAsset({
+        name: '',
+        category: 'Equipment',
+        quantity: 1,
+        status: 'Good'
+      });
+    } catch (err) {
+      handleFirestoreError(err, OperationType.CREATE, 'assets');
+    }
+  };
+
   if (loading) return <div className="flex justify-center p-12"><div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" /></div>;
 
   return (
@@ -1766,6 +2599,76 @@ const AssetInventory = () => {
         title={confirmConfig.title}
         message={confirmConfig.message}
       />
+
+      {showModal && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[100] flex items-center justify-center p-6">
+          <motion.div 
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="bg-white rounded-3xl w-full max-w-md p-8 shadow-2xl"
+          >
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="text-2xl font-bold text-primary">Add New Asset</h3>
+              <button onClick={() => setShowModal(false)} className="p-2 hover:bg-slate-100 rounded-full"><X size={24} /></button>
+            </div>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-bold text-slate-700 mb-1">Asset Name</label>
+                <input 
+                  type="text" 
+                  value={newAsset.name}
+                  onChange={e => setNewAsset({...newAsset, name: e.target.value})}
+                  className="w-full p-3 rounded-xl border border-slate-200"
+                  placeholder="e.g. Laptop, Projector"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-bold text-slate-700 mb-1">Category</label>
+                <select 
+                  value={newAsset.category}
+                  onChange={e => setNewAsset({...newAsset, category: e.target.value})}
+                  className="w-full p-3 rounded-xl border border-slate-200"
+                >
+                  <option>Equipment</option>
+                  <option>Furniture</option>
+                  <option>Stationery</option>
+                  <option>Other</option>
+                </select>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-bold text-slate-700 mb-1">Quantity</label>
+                  <input 
+                    type="number" 
+                    value={newAsset.quantity}
+                    onChange={e => setNewAsset({...newAsset, quantity: parseInt(e.target.value) || 0})}
+                    className="w-full p-3 rounded-xl border border-slate-200"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-bold text-slate-700 mb-1">Status</label>
+                  <select 
+                    value={newAsset.status}
+                    onChange={e => setNewAsset({...newAsset, status: e.target.value})}
+                    className="w-full p-3 rounded-xl border border-slate-200"
+                  >
+                    <option>Good</option>
+                    <option>Fair</option>
+                    <option>Poor</option>
+                    <option>Damaged</option>
+                  </select>
+                </div>
+              </div>
+              <button 
+                onClick={handleCreateAsset}
+                className="w-full py-4 bg-primary text-white font-bold rounded-xl shadow-lg hover:bg-primary/90 transition-all mt-4"
+              >
+                Add to Inventory
+              </button>
+            </div>
+          </motion.div>
+        </div>
+      )}
       <table className="w-full text-left">
         <thead>
           <tr className="border-b border-slate-100">
@@ -1819,28 +2722,401 @@ const AssetInventory = () => {
   );
 };
 
-const GovernanceTools = () => (
-  <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-    <div className="space-y-4">
-      <h3 className="text-lg font-bold text-slate-900">Internal Policies</h3>
-      <div className="space-y-2">
-        {['Conflict of Interest', 'Data Protection', 'Safeguarding Policy'].map(p => (
-          <div key={p} className="p-4 rounded-xl border border-slate-100 flex justify-between items-center">
-            <span className="text-sm font-medium text-slate-700">{p}</span>
-            <button className="text-xs font-bold text-primary">Review</button>
+const GovernanceTools = () => {
+  const [showToast, setShowToast] = useState(false);
+  const [toastMessage, setToastMessage] = useState('');
+
+  const triggerToast = (msg: string) => {
+    setToastMessage(msg);
+    setShowToast(true);
+    setTimeout(() => setShowToast(false), 3000);
+  };
+
+  useEffect(() => {
+    const handleAddNewEvent = (e: any) => {
+      if (e.detail.tab === 'governance') {
+        triggerToast("Governance policy creation is restricted to Board Members.");
+      }
+    };
+    window.addEventListener('admin:add-new', handleAddNewEvent);
+    return () => window.removeEventListener('admin:add-new', handleAddNewEvent);
+  }, []);
+
+  useEffect(() => {
+    const handleExportEvent = (e: any) => {
+      if (e.detail.tab === 'governance') {
+        const policies = ['Conflict of Interest', 'Data Protection', 'Safeguarding Policy'].map(p => ({ policy: p }));
+        const csv = exportToCSV(policies);
+        downloadCSV(csv, `governance_policies_export_${new Date().toISOString().split('T')[0]}.csv`);
+      }
+    };
+    window.addEventListener('admin:export-data', handleExportEvent);
+    return () => window.removeEventListener('admin:export-data', handleExportEvent);
+  }, []);
+
+  return (
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-8 relative">
+      {showToast && (
+        <div className="fixed bottom-10 right-10 bg-slate-900 text-white px-6 py-3 rounded-2xl shadow-2xl z-[200] animate-in fade-in slide-in-from-bottom-4">
+          {toastMessage}
+        </div>
+      )}
+      <div className="space-y-4">
+        <h3 className="text-lg font-bold text-slate-900">Internal Policies</h3>
+        <div className="space-y-2">
+          {['Conflict of Interest', 'Data Protection', 'Safeguarding Policy'].map(p => (
+            <div key={p} className="p-4 rounded-xl border border-slate-100 flex justify-between items-center">
+              <span className="text-sm font-medium text-slate-700">{p}</span>
+              <button 
+                onClick={() => triggerToast("Policy review module is currently offline.")}
+                className="text-xs font-bold text-primary hover:underline"
+              >
+                Review
+              </button>
+            </div>
+          ))}
+        </div>
+      </div>
+      <div className="space-y-4">
+        <h3 className="text-lg font-bold text-slate-900">Board Meetings</h3>
+        <div className="p-6 rounded-2xl bg-primary text-white">
+          <p className="text-xs text-white/60 uppercase font-bold mb-1">Next Meeting</p>
+          <p className="text-xl font-bold mb-4">March 25, 2024 • 10:00 AM</p>
+          <button 
+            onClick={() => triggerToast("Meeting agenda is being finalized.")}
+            className="w-full py-2 bg-white/10 hover:bg-white/20 rounded-lg text-sm font-bold transition-colors"
+          >
+            View Agenda
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const MediaLibrary = ({ images, setImages }: { images: GalleryMedia[], setImages: React.Dispatch<React.SetStateAction<GalleryMedia[]>> }) => {
+  const [showUploadModal, setShowUploadModal] = useState(false);
+  const [selectedFiles, setSelectedFiles] = useState<{ file: File, preview: string, type: 'image' | 'video' }[]>([]);
+  const [bulkCategory, setBulkCategory] = useState('Programs');
+  const [bulkTitle, setBulkTitle] = useState('');
+  const [filterType, setFilterType] = useState<'all' | 'image' | 'video'>('all');
+  const [filterCategory, setFilterCategory] = useState('All');
+  const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<{ [key: number]: number }>({});
+  const [confirmConfig, setConfirmConfig] = useState<{ isOpen: boolean, onConfirm: () => void, title?: string, message?: string }>({
+    isOpen: false,
+    onConfirm: () => {},
+  });
+
+  useEffect(() => {
+    const handleAddNewEvent = (e: any) => {
+      if (e.detail.tab === 'media_library') {
+        setShowUploadModal(true);
+      }
+    };
+    window.addEventListener('admin:add-new', handleAddNewEvent);
+    return () => window.removeEventListener('admin:add-new', handleAddNewEvent);
+  }, []);
+
+  useEffect(() => {
+    const handleExportEvent = (e: any) => {
+      if (e.detail.tab === 'media_library') {
+        const csv = exportToCSV(images);
+        downloadCSV(csv, `media_library_export_${new Date().toISOString().split('T')[0]}.csv`);
+      }
+    };
+    window.addEventListener('admin:export-data', handleExportEvent);
+    return () => window.removeEventListener('admin:export-data', handleExportEvent);
+  }, [images]);
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files) {
+      const files = Array.from(e.target.files) as File[];
+      const newFiles = files.map(file => ({
+        file,
+        preview: URL.createObjectURL(file),
+        type: file.type.startsWith('video') ? 'video' : 'image' as 'image' | 'video'
+      }));
+      setSelectedFiles(prev => [...prev, ...newFiles]);
+    }
+  };
+
+  const handleBulkUpload = async () => {
+    if (selectedFiles.length === 0) return;
+    
+    setUploading(true);
+    setUploadProgress({});
+    const token = localStorage.getItem('token');
+    const uploadedMedia: GalleryMedia[] = [];
+
+    try {
+      for (let i = 0; i < selectedFiles.length; i++) {
+        const item = selectedFiles[i];
+        const formData = new FormData();
+        formData.append('file', item.file);
+        formData.append('title', bulkTitle || item.file.name);
+        formData.append('category', bulkCategory);
+        formData.append('type', item.type);
+
+        const response = await axios.post('/api/media-library', formData, {
+          headers: { 
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'multipart/form-data'
+          },
+          onUploadProgress: (progressEvent) => {
+            const percentCompleted = Math.round((progressEvent.loaded * 100) / (progressEvent.total || 1));
+            setUploadProgress(prev => ({ ...prev, [i]: percentCompleted }));
+          }
+        });
+
+        uploadedMedia.push({
+          id: response.data.id.toString(),
+          url: response.data.url,
+          caption: response.data.title,
+          category: bulkCategory,
+          date: new Date().toISOString().split('T')[0],
+          type: item.type,
+          thumbnail: item.type === 'video' ? 'https://images.unsplash.com/photo-1492724441997-5dc865305da7?auto=format&fit=crop&q=80&w=400' : undefined
+        } as any);
+      }
+      
+      setImages(prev => [...uploadedMedia, ...prev]);
+      setShowUploadModal(false);
+      setSelectedFiles([]);
+      setBulkTitle('');
+    } catch (err) {
+      console.error("Bulk upload failed:", err);
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleDelete = async (id: string, name: string) => {
+    setConfirmConfig({
+      isOpen: true,
+      title: "Delete Media Asset",
+      message: `Are you sure you want to delete ${name}? This action cannot be undone.`,
+      onConfirm: async () => {
+        try {
+          const token = localStorage.getItem('token');
+          await axios.delete(`/api/media-library/${id}`, {
+            headers: { Authorization: `Bearer ${token}` }
+          });
+          setImages(prev => prev.filter(img => img.id !== id));
+        } catch (err) {
+          console.error("Delete failed:", err);
+        }
+      }
+    });
+  };
+
+  const filteredImages = images.filter(item => {
+    const matchesType = filterType === 'all' || item.type === filterType;
+    const matchesCategory = filterCategory === 'All' || item.category === filterCategory;
+    return matchesType && matchesCategory;
+  });
+
+  return (
+    <div className="space-y-8">
+      <ConfirmationModal 
+        isOpen={confirmConfig.isOpen}
+        onClose={() => setConfirmConfig({ ...confirmConfig, isOpen: false })}
+        onConfirm={confirmConfig.onConfirm}
+        title={confirmConfig.title}
+        message={confirmConfig.message}
+      />
+      <div className="flex justify-between items-center">
+        <h2 className="text-2xl font-bold text-slate-900">Internal Media Library</h2>
+        <button 
+          onClick={() => setShowUploadModal(true)}
+          className="px-6 py-2.5 bg-primary text-white rounded-2xl font-bold flex items-center gap-2 hover:bg-primary/90 transition-all shadow-lg shadow-primary/20"
+        >
+          <Upload size={20} /> Upload Group
+        </button>
+      </div>
+
+      <div className="flex flex-wrap gap-4 bg-white p-4 rounded-2xl border border-slate-100 shadow-sm">
+        <div className="flex items-center gap-2">
+          <label className="text-sm font-bold text-slate-500 uppercase tracking-wider">Type:</label>
+          <select 
+            value={filterType}
+            onChange={(e) => setFilterType(e.target.value as any)}
+            className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-primary/20"
+          >
+            <option value="all">All Types</option>
+            <option value="image">Images Only</option>
+            <option value="video">Videos Only</option>
+          </select>
+        </div>
+        <div className="flex items-center gap-2">
+          <label className="text-sm font-bold text-slate-500 uppercase tracking-wider">Category:</label>
+          <select 
+            value={filterCategory}
+            onChange={(e) => setFilterCategory(e.target.value)}
+            className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-primary/20"
+          >
+            <option value="All">All Categories</option>
+            <option value="Programs">Programs</option>
+            <option value="Events">Events</option>
+            <option value="Community">Community</option>
+            <option value="Impact">Impact</option>
+            <option value="General">General</option>
+          </select>
+        </div>
+        <div className="ml-auto text-xs text-slate-400 font-medium flex items-center">
+          Showing {filteredImages.length} of {images.length} assets
+        </div>
+      </div>
+
+      {showUploadModal && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[100] flex items-center justify-center p-6">
+          <motion.div 
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="bg-white rounded-3xl w-full max-w-4xl p-8 shadow-2xl max-h-[90vh] overflow-y-auto"
+          >
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="text-2xl font-bold text-primary">Bulk Upload Assets</h3>
+              <button onClick={() => setShowUploadModal(false)} className="p-2 hover:bg-slate-100 rounded-full"><X size={24} /></button>
+            </div>
+
+            <div className="grid md:grid-cols-2 gap-8">
+              <div className="space-y-6">
+                <div className="p-8 border-2 border-dashed border-slate-200 rounded-2xl text-center hover:border-primary transition-colors relative">
+                  <input 
+                    type="file" 
+                    multiple 
+                    onChange={handleFileChange}
+                    className="absolute inset-0 opacity-0 cursor-pointer"
+                  />
+                  <Upload className="mx-auto text-slate-300 mb-4" size={48} />
+                  <p className="text-slate-600 font-medium">Click or drag files to upload</p>
+                  <p className="text-xs text-slate-400 mt-2">Supports multiple images</p>
+                </div>
+
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-bold text-slate-700 mb-1">Group Title (Optional)</label>
+                    <input 
+                      type="text" 
+                      placeholder="e.g. Annual Gala 2024" 
+                      className="w-full p-3 rounded-xl border border-slate-200"
+                      value={bulkTitle}
+                      onChange={e => setBulkTitle(e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-bold text-slate-700 mb-1">Category</label>
+                    <select 
+                      className="w-full p-3 rounded-xl border border-slate-200"
+                      value={bulkCategory}
+                      onChange={e => setBulkCategory(e.target.value)}
+                    >
+                      <option value="Programs">Programs</option>
+                      <option value="Events">Events</option>
+                      <option value="Community">Community</option>
+                      <option value="Impact">Impact</option>
+                      <option value="General">General</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-slate-50 rounded-2xl p-6 overflow-y-auto max-h-[400px]">
+                <h4 className="font-bold text-slate-900 mb-4 flex justify-between">
+                  Selected Files
+                  <span className="text-primary">{selectedFiles.length}</span>
+                </h4>
+                <div className="grid grid-cols-2 gap-4">
+                  {selectedFiles.map((item, idx) => (
+                    <div key={idx} className="relative aspect-square rounded-xl overflow-hidden border border-slate-200 bg-white group">
+                      <img src={item.preview} alt="preview" className="w-full h-full object-cover" />
+                      {uploadProgress[idx] !== undefined && (
+                        <div className="absolute inset-0 bg-black/60 flex flex-col items-center justify-center p-4">
+                          <div className="w-full bg-white/20 h-1.5 rounded-full overflow-hidden">
+                            <div 
+                              className="bg-primary h-full transition-all duration-300" 
+                              style={{ width: `${uploadProgress[idx]}%` }}
+                            />
+                          </div>
+                          <span className="text-[10px] text-white font-bold mt-2">{uploadProgress[idx]}%</span>
+                        </div>
+                      )}
+                      <button 
+                        onClick={() => setSelectedFiles(prev => prev.filter((_, i) => i !== idx))}
+                        className="absolute top-1 right-1 p-1 bg-white/90 rounded-full text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
+                      >
+                        <X size={12} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="flex gap-4 mt-8">
+              <button 
+                onClick={() => setShowUploadModal(false)}
+                className="flex-1 py-4 border border-slate-200 rounded-2xl font-bold text-slate-600 hover:bg-slate-50 transition-colors"
+              >
+                Cancel
+              </button>
+              <button 
+                onClick={handleBulkUpload}
+                disabled={uploading || selectedFiles.length === 0}
+                className="flex-1 py-4 bg-primary text-white rounded-2xl font-bold hover:bg-primary/90 disabled:opacity-50 transition-all shadow-lg shadow-primary/20"
+              >
+                {uploading ? 'Uploading Assets...' : `Upload ${selectedFiles.length} Assets`}
+              </button>
+            </div>
+          </motion.div>
+        </div>
+      )}
+
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+        {filteredImages.map((item) => (
+          <div key={item.id} className="group relative aspect-square rounded-2xl overflow-hidden border border-slate-100 shadow-sm bg-white">
+            {item.type === 'video' ? (
+              <div className="w-full h-full bg-slate-900 relative flex items-center justify-center">
+                {item.thumbnail ? (
+                  <img src={item.thumbnail} alt={item.caption} className="w-full h-full object-cover opacity-60" loading="lazy" />
+                ) : (
+                  <Play size={32} className="text-white/40" />
+                )}
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <div className="w-10 h-10 bg-white/20 backdrop-blur-md rounded-full flex items-center justify-center text-white">
+                    <Play size={20} fill="currentColor" />
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <img src={item.url} alt={item.caption} className="w-full h-full object-cover transition-transform group-hover:scale-110" loading="lazy" />
+            )}
+            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+              <button 
+                onClick={() => handleDelete(item.id, item.caption)}
+                className="p-2 bg-white rounded-full text-red-500 hover:bg-red-500 hover:text-white transition-colors"
+              >
+                <Trash2 size={16} />
+              </button>
+            </div>
+            <div className="absolute bottom-0 left-0 right-0 p-2 bg-gradient-to-t from-black/60 to-transparent">
+              <p className="text-[10px] text-white font-medium truncate">{item.caption}</p>
+              <div className="flex justify-between items-center">
+                <p className="text-[8px] text-white/60 uppercase tracking-wider">{item.category}</p>
+                <p className="text-[8px] text-white/60 uppercase tracking-wider">{item.type}</p>
+              </div>
+            </div>
           </div>
         ))}
+        {filteredImages.length === 0 && (
+          <div className="col-span-full py-20 text-center text-slate-400 italic">
+            {images.length === 0 ? "No assets in the library. Start by uploading a group of images." : "No assets match the selected filters."}
+          </div>
+        )}
       </div>
     </div>
-    <div className="space-y-4">
-      <h3 className="text-lg font-bold text-slate-900">Board Meetings</h3>
-      <div className="p-6 rounded-2xl bg-primary text-white">
-        <p className="text-xs text-white/60 uppercase font-bold mb-1">Next Meeting</p>
-        <p className="text-xl font-bold mb-4">March 25, 2024 • 10:00 AM</p>
-        <button className="w-full py-2 bg-white/10 hover:bg-white/20 rounded-lg text-sm font-bold transition-colors">View Agenda</button>
-      </div>
-    </div>
-  </div>
-);
+  );
+};
 
 export default AdminPortal;

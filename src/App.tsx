@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, Component, ErrorInfo, ReactNode } from 'react';
 import { 
   Menu, X, GraduationCap, Users, Heart, Calendar, Handshake, 
   BookOpen, ShieldCheck, ChevronRight, Github, 
@@ -10,6 +10,7 @@ import {
 import { motion, AnimatePresence } from 'framer-motion';
 import { usePaystackPayment } from 'react-paystack';
 import { v4 as uuidv4 } from 'uuid';
+import axios from 'axios';
 import { auth, db } from './firebase';
 import { collection, onSnapshot, query, orderBy } from 'firebase/firestore';
 import { PROGRAM_TRACKS, COLORS, GALLERY_MEDIA } from './constants';
@@ -246,11 +247,12 @@ const StatsBar = () => {
   return (
     <section className="relative z-20 mt-[50px] mb-12">
       <div className="w-full max-w-7xl mx-auto px-6">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
           {[
-            { icon: Users, title: '1,000+ Students', desc: 'by Dec, 2031', color: 'bg-blue-100 text-primary' },
-            { icon: Zap, title: '25+ Tech Tracks', desc: 'by Dec, 2031', color: 'bg-green-100 text-green-600' },
-            { icon: Globe, title: 'National Reach', desc: 'by Dec, 2031', color: 'bg-orange-100 text-orange-600' }
+            { icon: Users, title: '5,000+ Students Reached', desc: 'by December 2031', color: 'bg-blue-100 text-primary' },
+            { icon: GraduationCap, title: '30+ Schools Supported', desc: 'by December 2031', color: 'bg-green-100 text-green-600' },
+            { icon: Target, title: '10+ Community Programs Delivered', desc: 'by December 2031', color: 'bg-orange-100 text-orange-600' },
+            { icon: Zap, title: '1,000+ Youths Introduced to Technology Learning', desc: 'by December 2031', color: 'bg-purple-100 text-purple-600' }
           ].map((stat, i) => (
             <motion.div 
               key={i}
@@ -460,12 +462,14 @@ const TeamPage = () => (
           name: "Philip Akpoviroro Okpodu", 
           role: "Programs Manager", 
           img: "https://images2.imgbox.com/c8/42/0Ct4tJQ7_o.jpeg",
+          imagePosition: "object-top",
           bio: "Philip Akpoviroro Okpodu serves as Programs Manager at the Okpodu Education & Technology Foundation (OETF), where he supports the planning, coordination, and implementation of the Foundation’s educational and community development initiatives. He works closely with the Executive Director and the Board to ensure that OETF’s programs are effectively organized, implemented, and aligned with the Foundation’s mission of expanding access to education and technology.\n\nIn this role, Philip contributes to program coordination, stakeholder engagement, and operational oversight, supporting partnerships with schools, educators, and community organizations. His responsibilities include assisting with project implementation, monitoring program activities, and ensuring that the Foundation’s initiatives are delivered efficiently and reach the communities they are designed to serve.\n\nPhilip brings over a decade of professional experience across administration, business operations, sales management, and education. His background in operational management and teaching has equipped him with strong organizational, communication, and leadership skills that support the effective delivery of OETF’s programs.\n\nHe holds a Bachelor of Science (BSc) degree from Delta State University, Abraka, and is currently pursuing a Master’s degree in Accounting at Delta State University, Abraka, further strengthening his expertise in financial management and organizational governance.\n\nPhilip is dedicated to supporting initiatives that promote education, youth empowerment, and sustainable community development."
         },
         { 
           name: "Blessing Asini", 
           role: "Finance & Administrative Officer", 
           img: "https://images2.imgbox.com/8c/bf/geDdTm43_o.jpeg",
+          imagePosition: "object-top",
           bio: "Blessing Asini serves as Finance and Administrative Officer at the Okpodu Education & Technology Foundation (OETF), where he is responsible for supporting the Foundation’s financial administration and ensuring proper financial accountability in its operations.\n\nIn this role, Blessing manages financial records, supports budgeting and expenditure tracking, processes payroll and operational payments, and assists with financial reporting to ensure that the Foundation’s resources are managed responsibly and transparently. His work helps maintain strong financial governance and supports the effective implementation of OETF programs.\n\nBlessing brings professional experience in accounting, financial management, payroll administration, and institutional record-keeping. His expertise includes bookkeeping, budgeting, procurement oversight, bank reconciliation, and financial reporting, all of which contribute to maintaining disciplined financial systems within the Foundation.\n\nHe holds a Higher National Diploma (HND) in Accounting from Plateau State Polytechnic, Jos, Nigeria, and is a Certified Accountant with the Institute of Certified Public Accountants of Nigeria (ICPAN).\n\nBlessing is committed to supporting the Foundation’s mission by ensuring strong financial stewardship and responsible management of resources."
         }
       ].map((member, i) => (
@@ -477,7 +481,7 @@ const TeamPage = () => (
           className="bg-white p-8 md:p-12 rounded-[3rem] shadow-xl border border-slate-100 flex flex-col md:flex-row gap-8 items-center md:items-start"
         >
           <div className="w-48 h-48 md:w-64 md:h-64 bg-slate-100 rounded-[2rem] overflow-hidden shrink-0 shadow-lg">
-            <img src={member.img} alt={member.name} className="w-full h-full object-cover" />
+            <img src={member.img} alt={member.name} className={`w-full h-full object-cover ${(member as any).imagePosition || 'object-center'}`} loading="lazy" />
           </div>
           <div className="flex-grow text-center md:text-left">
             <h3 className="text-3xl font-bold text-primary mb-2">{member.name}</h3>
@@ -607,6 +611,7 @@ const TrusteesPage = () => {
                   alt={trustee.name} 
                   className={`w-full h-full object-cover ${trustee.imagePosition || 'object-center'}`}
                   referrerPolicy="no-referrer"
+                  loading="lazy"
                 />
               ) : (
                 <Users size={64} />
@@ -1064,6 +1069,7 @@ const FoundersMessagePage = () => (
               alt="Chairman Akpesiri Emmanuel Okpodu" 
               className="w-full h-full object-cover"
               referrerPolicy="no-referrer"
+              loading="lazy"
             />
           </div>
           <div className="text-center md:text-left">
@@ -1131,16 +1137,17 @@ const LegacyPage = ({ setView }: { setView: (view: any) => void }) => (
 
       <div className="text-xl text-slate-600 leading-relaxed overflow-hidden">
         {/* Frederick - Top Left */}
-        <div className="float-left mr-8 mb-6 w-full md:w-1/3 max-w-[260px]">
+        <div className="float-left mr-8 mb-6 w-full md:w-1/3 max-w-[320px]">
           <div className="aspect-[3/4] rounded-2xl overflow-hidden shadow-xl mb-4">
             <img 
-              src="https://images2.imgbox.com/50/dd/rjEw3fKW_o.jpeg" 
+              src="https://images2.imgbox.com/96/35/Wyow2BxL_o.jpg" 
               alt="Frederick Menukun Asini Okpodu" 
               className="w-full h-full object-cover"
               referrerPolicy="no-referrer"
+              loading="lazy"
             />
           </div>
-          <h3 className="text-lg font-bold text-primary leading-tight">Frederick Menukun Asini Okpodu</h3>
+          <h3 className="text-lg font-bold text-primary leading-tight whitespace-nowrap">Frederick Menukun Asini Okpodu</h3>
           <p className="text-slate-500 font-semibold text-sm">July 16, 1919 – Jan 12, 2004</p>
         </div>
 
@@ -1155,16 +1162,17 @@ const LegacyPage = ({ setView }: { setView: (view: any) => void }) => (
         </p>
 
         {/* William - Bottom Right */}
-        <div className="float-right ml-8 mb-6 mt-4 w-full md:w-1/3 max-w-[260px]">
+        <div className="float-right ml-8 mb-6 mt-4 w-full md:w-1/3 max-w-[320px]">
           <div className="aspect-[3/4] rounded-2xl overflow-hidden shadow-xl mb-4">
             <img 
-              src="https://images2.imgbox.com/12/66/npPlcfok_o.jpeg" 
+              src="https://images2.imgbox.com/25/4b/vKLIbCQu_o.jpg" 
               alt="William Eyimofe Asini Okpodu" 
               className="w-full h-full object-cover"
               referrerPolicy="no-referrer"
+              loading="lazy"
             />
           </div>
-          <h3 className="text-lg font-bold text-primary leading-tight">William Eyimofe Asini Okpodu</h3>
+          <h3 className="text-lg font-bold text-primary leading-tight whitespace-nowrap">William Eyimofe Asini Okpodu</h3>
           <p className="text-slate-500 font-semibold text-sm">March 16, 1926 – Dec 9, 2019</p>
         </div>
 
@@ -1199,10 +1207,10 @@ const LegacyPage = ({ setView }: { setView: (view: any) => void }) => (
 
 const ImpactPage = () => {
   const metrics = [
-    { label: "Students Reached", value: "10,000+", target: "by Dec, 2031", icon: Users },
-    { label: "Schools Supported", value: "50+", target: "by Dec, 2031", icon: GraduationCap },
-    { label: "Community Programs Delivered", value: "30+", target: "by Dec, 2031", icon: Target },
-    { label: "Youth Introduced to Technology Learning", value: "5,000+", target: "by Dec, 2031", icon: Zap },
+    { label: "Students Reached", value: "5,000+", target: "by December 2031", icon: Users },
+    { label: "Schools Supported", value: "30+", target: "by December 2031", icon: GraduationCap },
+    { label: "Community Programs Delivered", value: "10+", target: "by December 2031", icon: Target },
+    { label: "Youth Introduced to Technology Learning", value: "1,000+", target: "by December 2031", icon: Zap },
   ];
 
   return (
@@ -1612,6 +1620,25 @@ const DonationPage = ({ setView }: { setView: (view: any) => void }) => {
 
   const initializePayment = usePaystackPayment(config);
 
+  const onSuccess = React.useCallback((reference: any) => {
+    // Verify on server
+    fetch('/api/donations/verify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ reference: reference.reference })
+    }).then(() => {
+      setIsProcessing(false);
+      setPlanCode(null);
+      setView('donation_success');
+    });
+  }, [setView]);
+
+  const onClose = React.useCallback(() => {
+    setIsProcessing(false);
+    setPlanCode(null);
+    console.log('closed');
+  }, []);
+
   useEffect(() => {
     // Only trigger payment if we are processing AND (it's one-time OR we have a plan code for recurring)
     if (isProcessing && (frequency === 'one-time' || planCode)) {
@@ -1623,26 +1650,7 @@ const DonationPage = ({ setView }: { setView: (view: any) => void }) => {
       // @ts-ignore
       initializePayment(onSuccess, onClose);
     }
-  }, [planCode, isProcessing]);
-
-  const onSuccess = (reference: any) => {
-    // Verify on server
-    fetch('/api/donations/verify', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ reference: reference.reference })
-    }).then(() => {
-      setIsProcessing(false);
-      setPlanCode(null);
-      setView('donation_success');
-    });
-  };
-
-  const onClose = () => {
-    setIsProcessing(false);
-    setPlanCode(null);
-    console.log('closed');
-  };
+  }, [planCode, isProcessing, frequency, publicKey, initializePayment, onSuccess, onClose]);
 
   const startDonationProcess = async (finalAmount: number) => {
     if (!donorEmail || !donorName) {
@@ -1839,30 +1847,97 @@ const DonationPage = ({ setView }: { setView: (view: any) => void }) => {
   );
 };
 
+// --- Error Boundary ---
+class ErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean, error: Error | null }> {
+  constructor(props: { children: ReactNode }) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error: Error) {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+    console.error("Uncaught error:", error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="min-h-screen flex items-center justify-center bg-slate-50 p-6">
+          <div className="bg-white rounded-3xl p-8 shadow-2xl max-w-md w-full text-center">
+            <h2 className="text-2xl font-bold text-red-600 mb-4">Something went wrong</h2>
+            <p className="text-slate-600 mb-6">
+              {this.state.error?.message || "An unexpected error occurred."}
+            </p>
+            <button 
+              onClick={() => window.location.reload()}
+              className="btn-primary w-full"
+            >
+              Reload Application
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    return this.props.children;
+  }
+}
+
 // --- Main App ---
 
 export default function App() {
+  return (
+    <ErrorBoundary>
+      <AppContent />
+    </ErrorBoundary>
+  );
+}
+
+function AppContent() {
   const [view, setView] = useState<'landing' | 'team' | 'trustees' | 'programs_page' | 'events' | 'blog' | 'partner' | 'about_us' | 'gallery' | 'what_we_do' | 'where_we_work' | 'admin' | 'locality_profile' | 'school_profile' | 'contact' | 'legacy' | 'founders_message' | 'impact' | 'donation' | 'donation_success' | 'volunteer'>('landing');
   
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [galleryMedia, setGalleryMedia] = useState<GalleryMedia[]>(GALLERY_MEDIA);
 
   useEffect(() => {
-    const q = query(collection(db, 'gallery'), orderBy('createdAt', 'desc'));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const media = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      })) as GalleryMedia[];
-      
-      if (media.length > 0) {
-        setGalleryMedia(media);
-      } else {
-        setGalleryMedia(GALLERY_MEDIA);
+    const fetchGalleryMedia = async () => {
+      try {
+        const response = await axios.get('/api/media-library');
+        const media = response.data.map((item: any) => ({
+          id: item.id,
+          url: item.url,
+          caption: item.title,
+          category: item.category,
+          date: item.created_at ? new Date(item.created_at).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
+          type: item.type || (item.url.match(/\.(mp4|webm|ogg|mov)$/i) ? 'video' : 'image'),
+          thumbnail: item.thumbnail || (item.url.match(/\.(mp4|webm|ogg|mov)$/i) ? 'https://images.unsplash.com/photo-1492724441997-5dc865305da7?auto=format&fit=crop&q=80&w=400' : undefined)
+        })) as GalleryMedia[];
+        
+        if (media.length > 0) {
+          setGalleryMedia(media);
+        }
+      } catch (err) {
+        console.error("Failed to fetch gallery media from API:", err);
+        // Fallback to Firestore for now if API fails
+        const q = query(collection(db, 'gallery'), orderBy('createdAt', 'desc'));
+        const unsubscribe = onSnapshot(q, (snapshot) => {
+          const media = snapshot.docs.map(doc => ({
+            id: doc.id,
+            ...doc.data()
+          })) as GalleryMedia[];
+          
+          if (media.length > 0) {
+            setGalleryMedia(media);
+          }
+        });
+        return () => unsubscribe();
       }
-    });
+    };
 
-    return () => unsubscribe();
+    fetchGalleryMedia();
   }, []);
 
   useEffect(() => {

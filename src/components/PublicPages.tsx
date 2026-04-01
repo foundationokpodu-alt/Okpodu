@@ -12,7 +12,7 @@ import { ChevronLeft, Map as MapIcon } from 'lucide-react';
 import { GalleryMedia } from '../types';
 
 export const GalleryPage = ({ images }: { images: GalleryMedia[] }) => {
-  const categories = ['All', 'Programs', 'Events', 'Community'];
+  const categories = ['All', 'Programs', 'Events', 'Community', 'Impact', 'General'];
   const [activeCategory, setActiveCategory] = React.useState('All');
 
   const filteredMedia = activeCategory === 'All' 
@@ -63,6 +63,7 @@ export const GalleryPage = ({ images }: { images: GalleryMedia[] }) => {
                         alt={item.caption} 
                         className="w-full h-full object-cover opacity-60"
                         referrerPolicy="no-referrer"
+                        loading="lazy"
                       />
                     ) : (
                       <div className="w-full h-full flex items-center justify-center">
@@ -81,6 +82,7 @@ export const GalleryPage = ({ images }: { images: GalleryMedia[] }) => {
                     alt={item.caption} 
                     className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
                     referrerPolicy="no-referrer"
+                    loading="lazy"
                   />
                 )}
                 <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex flex-col justify-end p-6">
@@ -228,6 +230,7 @@ export const LocalityProfilePage = ({ id, onBack, onSchoolClick }: { id: string,
               alt={`Landscape and community view of ${locality.name} in Delta State, Nigeria`} 
               className="w-full h-[400px] object-cover rounded-[15px] shadow-2xl"
               referrerPolicy="no-referrer"
+              loading="lazy"
             />
           </motion.div>
           <motion.div
@@ -325,6 +328,7 @@ export const SchoolProfilePage = ({ id, onBack }: { id: string, onBack: () => vo
               alt={`Exterior or campus view of ${school.name}, a partner school of OETF`} 
               className="w-full h-[400px] object-cover rounded-[15px] shadow-2xl"
               referrerPolicy="no-referrer"
+              loading="lazy"
             />
           </motion.div>
           <motion.div

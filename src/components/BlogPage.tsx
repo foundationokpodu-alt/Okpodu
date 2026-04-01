@@ -51,6 +51,7 @@ const BlogPage = () => {
             alt={selectedPost.title} 
             className="w-full h-[400px] object-cover rounded-[15px] shadow-2xl mb-12"
             referrerPolicy="no-referrer"
+            loading="lazy"
           />
           
           <div className="flex flex-wrap gap-4 mb-6">
@@ -142,6 +143,7 @@ const BlogPage = () => {
                     alt={post.title} 
                     className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
                     referrerPolicy="no-referrer"
+                    loading="lazy"
                   />
                   <div className="absolute top-4 left-4">
                     <span className="px-4 py-1 bg-white/90 backdrop-blur-md text-primary rounded-full text-xs font-bold uppercase tracking-wider shadow-lg">
