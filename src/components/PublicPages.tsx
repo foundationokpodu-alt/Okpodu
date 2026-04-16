@@ -11,7 +11,7 @@ import { ChevronLeft, Map as MapIcon } from 'lucide-react';
 
 import { GalleryMedia } from '../types';
 
-export const GalleryPage = ({ images }: { images: GalleryMedia[] }) => {
+export const GalleryPage = ({ images, loading }: { images: GalleryMedia[], loading?: boolean }) => {
   const categories = ['All', 'Programs', 'Events', 'Community', 'Impact', 'General'];
   const [activeCategory, setActiveCategory] = React.useState('All');
 
@@ -43,59 +43,71 @@ export const GalleryPage = ({ images }: { images: GalleryMedia[] }) => {
           ))}
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
-          <AnimatePresence mode="popLayout">
-            {filteredMedia.map((item, idx) => (
-              <motion.div
-                key={item.id}
-                layout
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, scale: 0.9 }}
-                transition={{ delay: idx * 0.1 }}
-                className="group relative aspect-[4/3] rounded-[15px] overflow-hidden shadow-xl bg-white"
-              >
-                {item.type === 'video' ? (
-                  <div className="w-full h-full bg-slate-900 relative">
-                    {item.thumbnail ? (
-                      <img 
-                        src={item.thumbnail} 
-                        alt={item.caption} 
-                        className="w-full h-full object-cover opacity-60"
-                        referrerPolicy="no-referrer"
-                        loading="lazy"
-                      />
-                    ) : (
-                      <div className="w-full h-full flex items-center justify-center">
-                        <Play size={48} className="text-white/40" />
-                      </div>
-                    )}
-                    <div className="absolute inset-0 flex items-center justify-center">
-                      <div className="w-16 h-16 bg-white/20 backdrop-blur-md rounded-full flex items-center justify-center text-white group-hover:scale-110 transition-transform">
-                        <Play size={32} fill="currentColor" />
+        {loading ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
+            {[...Array(6)].map((_, i) => (
+              <div key={i} className="aspect-[4/3] rounded-[15px] bg-slate-200 animate-pulse" />
+            ))}
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
+            <AnimatePresence mode="popLayout">
+              {filteredMedia.map((item, idx) => (
+                <motion.div
+                  key={item.id}
+                  layout
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, scale: 0.9 }}
+                  transition={{ delay: idx * 0.1 }}
+                  className="group relative aspect-[4/3] rounded-[15px] overflow-hidden shadow-xl bg-white"
+                >
+                  {item.type === 'video' ? (
+                    <div className="w-full h-full bg-slate-900 relative">
+                      {item.thumbnail ? (
+                        <img 
+                          src={item.thumbnail} 
+                          alt={item.caption} 
+                          width="800"
+                          height="600"
+                          className="w-full h-full object-cover opacity-60"
+                          referrerPolicy="no-referrer"
+                          loading="lazy"
+                        />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center">
+                          <Play size={48} className="text-white/40" />
+                        </div>
+                      )}
+                      <div className="absolute inset-0 flex items-center justify-center">
+                        <div className="w-16 h-16 bg-white/20 backdrop-blur-md rounded-full flex items-center justify-center text-white group-hover:scale-110 transition-transform">
+                          <Play size={32} fill="currentColor" />
+                        </div>
                       </div>
                     </div>
+                  ) : (
+                    <img 
+                      src={item.url} 
+                      alt={item.caption} 
+                      width="800"
+                      height="600"
+                      className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
+                      referrerPolicy="no-referrer"
+                      loading="lazy"
+                    />
+                  )}
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex flex-col justify-end p-6">
+                    <p className="text-white font-bold text-lg mb-1">{item.caption}</p>
+                    <div className="flex justify-between items-center">
+                      <span className="text-white/70 text-sm">{item.category}</span>
+                      <span className="text-white/70 text-sm">{item.date}</span>
+                    </div>
                   </div>
-                ) : (
-                  <img 
-                    src={item.url} 
-                    alt={item.caption} 
-                    className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
-                    referrerPolicy="no-referrer"
-                    loading="lazy"
-                  />
-                )}
-                <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex flex-col justify-end p-6">
-                  <p className="text-white font-bold text-lg mb-1">{item.caption}</p>
-                  <div className="flex justify-between items-center">
-                    <span className="text-white/70 text-sm">{item.category}</span>
-                    <span className="text-white/70 text-sm">{item.date}</span>
-                  </div>
-                </div>
-              </motion.div>
-            ))}
-          </AnimatePresence>
-        </div>
+                </motion.div>
+              ))}
+            </AnimatePresence>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -228,6 +240,8 @@ export const LocalityProfilePage = ({ id, onBack, onSchoolClick }: { id: string,
             <img 
               src={locality.image_url} 
               alt={`Landscape and community view of ${locality.name} in Delta State, Nigeria`} 
+              width="800"
+              height="400"
               className="w-full h-[400px] object-cover rounded-[15px] shadow-2xl"
               referrerPolicy="no-referrer"
               loading="lazy"
@@ -326,6 +340,8 @@ export const SchoolProfilePage = ({ id, onBack }: { id: string, onBack: () => vo
             <img 
               src={school.image_url} 
               alt={`Exterior or campus view of ${school.name}, a partner school of OETF`} 
+              width="800"
+              height="400"
               className="w-full h-[400px] object-cover rounded-[15px] shadow-2xl"
               referrerPolicy="no-referrer"
               loading="lazy"

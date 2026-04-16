@@ -32,9 +32,7 @@ export const PROGRAM_TRACKS: ProgramTrack[] = [
 ];
 
 export const GALLERY_MEDIA: GalleryMedia[] = [
-  { id: '2', url: 'https://images.unsplash.com/photo-1524178232363-1fb2b075b655?auto=format&fit=crop&q=80&w=800', caption: 'Workshop session', category: 'Events', date: '2023-11-20', type: 'image' },
   { id: '3', url: 'https://images2.imgbox.com/86/38/pLZqVlia_o.jpeg', caption: 'Community outreach', category: 'Community', date: '2023-12-05', type: 'image' },
-  { id: '4', url: 'https://images.unsplash.com/photo-1571260899304-425eee4c7efc?auto=format&fit=crop&q=80&w=800', caption: 'Graduation ceremony', category: 'Programs', date: '2024-01-10', type: 'image' },
 ];
 
 export const BLOG_POSTS: BlogPost[] = [

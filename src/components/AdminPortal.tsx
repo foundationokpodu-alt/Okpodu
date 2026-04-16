@@ -16,8 +16,9 @@ import {
   BlogPost, BlogComment, School as SchoolType, 
   Facilitator, Document, Asset, GalleryMedia, Donor 
 } from '../types';
-import { db, auth, handleFirestoreError, OperationType, googleProvider } from '../firebase';
+import { db, auth, storage, handleFirestoreError, OperationType, googleProvider } from '../firebase';
 import { collection, addDoc, deleteDoc, doc, serverTimestamp, query, orderBy, onSnapshot, getDoc } from 'firebase/firestore';
+import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import { signInWithEmailAndPassword, onAuthStateChanged, signOut, User, signInWithPopup } from 'firebase/auth';
 
 const exportToCSV = (objArray: any[]) => {
@@ -311,7 +312,7 @@ const AdminPortal = ({ galleryMedia, setGalleryMedia }: AdminPortalProps) => {
                 onClick={handleGoogleLogin}
                 className="w-full py-4 bg-white border border-slate-200 text-slate-700 font-bold rounded-2xl shadow-sm hover:bg-slate-50 transition-all flex items-center justify-center gap-3"
               >
-                <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google" className="w-5 h-5" />
+                <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google" width="20" height="20" className="w-5 h-5" />
                 Sign in with Google
               </button>
             </form>
@@ -533,7 +534,11 @@ const DashboardOverview = ({ onSwitchTab }: { onSwitchTab: (tab: string) => void
               </button>
             </div>
             <p className="text-sm text-slate-500 font-medium">{card.label}</p>
-            <h3 className="text-2xl font-bold text-slate-900 mt-1">{loading ? '...' : card.value}</h3>
+            <h3 className="text-2xl font-bold text-slate-900 mt-1">
+              {loading ? (
+                <div className="h-8 w-20 bg-slate-100 animate-pulse rounded-lg" />
+              ) : card.value}
+            </h3>
           </div>
         ))}
       </div>
@@ -698,7 +703,13 @@ const ApplicationsManagement = () => {
     }
   };
 
-  if (loading) return <div className="flex justify-center p-12"><div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" /></div>;
+  if (loading) return (
+    <div className="space-y-4 py-8">
+      {[...Array(5)].map((_, i) => (
+        <div key={i} className="h-16 bg-slate-50 animate-pulse rounded-2xl border border-slate-100" />
+      ))}
+    </div>
+  );
 
   return (
     <div className="overflow-x-auto">
@@ -929,8 +940,10 @@ const DonorsManagement = () => {
 
   if (loading && donations.length === 0) {
     return (
-      <div className="flex justify-center py-12">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+      <div className="space-y-4 py-8">
+        {[...Array(5)].map((_, i) => (
+          <div key={i} className="h-16 bg-slate-50 animate-pulse rounded-2xl border border-slate-100" />
+        ))}
       </div>
     );
   }
@@ -1198,8 +1211,14 @@ const BlogManagement = () => {
 
   if (loading && posts.length === 0) {
     return (
-      <div className="flex justify-center py-12">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 py-8">
+        {[...Array(3)].map((_, i) => (
+          <div key={i} className="p-6 rounded-3xl border border-slate-100 bg-white animate-pulse">
+            <div className="aspect-video bg-slate-100 rounded-2xl mb-4" />
+            <div className="h-4 bg-slate-100 rounded w-3/4 mb-2" />
+            <div className="h-4 bg-slate-100 rounded w-1/2" />
+          </div>
+        ))}
       </div>
     );
   }
@@ -1488,7 +1507,19 @@ const SchoolDatabase = () => {
     }
   };
 
-  if (loading) return <div className="flex justify-center p-12"><div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" /></div>;
+  if (loading) return (
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 py-8">
+      {[...Array(4)].map((_, i) => (
+        <div key={i} className="p-6 rounded-2xl border border-slate-100 bg-white animate-pulse">
+          <div className="h-6 bg-slate-100 rounded w-3/4 mb-4" />
+          <div className="grid grid-cols-2 gap-4">
+            <div className="h-4 bg-slate-100 rounded w-full" />
+            <div className="h-4 bg-slate-100 rounded w-full" />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
 
   return (
     <div className="space-y-6">
@@ -1702,7 +1733,13 @@ const FacilitatorDatabase = () => {
     }
   };
 
-  if (loading) return <div className="flex justify-center p-12"><div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" /></div>;
+  if (loading) return (
+    <div className="space-y-4 py-8">
+      {[...Array(5)].map((_, i) => (
+        <div key={i} className="h-16 bg-slate-50 animate-pulse rounded-2xl border border-slate-100" />
+      ))}
+    </div>
+  );
 
   return (
     <div className="overflow-x-auto">
@@ -1891,19 +1928,36 @@ const DocumentLibrary = () => {
     if (!newDoc.file || !newDoc.title) return;
     setUploading(true);
     try {
-      const formData = new FormData();
-      formData.append('file', newDoc.file);
+      const fileExtension = newDoc.file.name.split('.').pop();
+      const fileName = `documents/${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExtension}`;
+      const storageRef = ref(storage, fileName);
       
-      const response = await axios.post('/api/upload/media', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' }
-      });
-
-      await addDoc(collection(db, 'documents'), {
-        title: newDoc.title,
-        type: newDoc.type,
-        url: response.data.url,
-        size: `${(newDoc.file.size / 1024).toFixed(1)} KB`,
-        createdAt: serverTimestamp()
+      const uploadTask = uploadBytesResumable(storageRef, newDoc.file);
+      
+      await new Promise<void>((resolve, reject) => {
+        uploadTask.on('state_changed', 
+          null, 
+          (error) => {
+            console.error("Storage upload error:", error);
+            reject(error);
+          }, 
+          async () => {
+            try {
+              const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
+              
+              await addDoc(collection(db, 'documents'), {
+                title: newDoc.title,
+                type: newDoc.type,
+                url: downloadURL,
+                size: `${(newDoc.file.size / 1024).toFixed(1)} KB`,
+                createdAt: serverTimestamp()
+              });
+              resolve();
+            } catch (dbError) {
+              reject(dbError);
+            }
+          }
+        );
       });
 
       setShowUploadModal(false);
@@ -1915,7 +1969,13 @@ const DocumentLibrary = () => {
     }
   };
 
-  if (loading) return <div className="flex justify-center p-12"><div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" /></div>;
+  if (loading) return (
+    <div className="space-y-4 py-8">
+      {[...Array(5)].map((_, i) => (
+        <div key={i} className="h-16 bg-slate-50 animate-pulse rounded-2xl border border-slate-100" />
+      ))}
+    </div>
+  );
 
   return (
     <div className="space-y-6">
@@ -2084,7 +2144,16 @@ const ImpactReports = () => {
     }
   };
 
-  if (loading) return <div className="flex justify-center p-12"><div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" /></div>;
+  if (loading) return (
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 py-8">
+      {[...Array(4)].map((_, i) => (
+        <div key={i} className="p-6 rounded-2xl bg-slate-50 animate-pulse border border-slate-100">
+          <div className="h-6 bg-slate-200/50 rounded w-3/4 mb-2" />
+          <div className="h-4 bg-slate-200/50 rounded w-1/2" />
+        </div>
+      ))}
+    </div>
+  );
 
   return (
     <div className="space-y-8">
@@ -2189,15 +2258,10 @@ const PhotoArchive = ({ images, setImages }: { images: GalleryMedia[], setImages
       message: `Are you sure you want to delete this ${item.type}? This action cannot be undone.`,
       onConfirm: async () => {
         try {
-          const token = localStorage.getItem('token');
-          await axios.delete(`/api/media-library/${item.id}`, {
-            headers: { Authorization: `Bearer ${token}` }
-          });
-          // Update local state
-          setImages(prev => prev.filter(img => img.id !== item.id));
+          await deleteDoc(doc(db, 'gallery', item.id));
+          // No need to manually update state, onSnapshot will handle it
         } catch (err) {
-          console.error("Delete failed:", err);
-          // Use toast if available, or just log
+          handleFirestoreError(err, OperationType.DELETE, `gallery/${item.id}`);
         }
       }
     });
@@ -2249,8 +2313,6 @@ const PhotoArchive = ({ images, setImages }: { images: GalleryMedia[], setImages
     setUploadError(null);
     setUploadProgress({});
 
-    const token = localStorage.getItem('token');
-    const uploadedMedia: GalleryMedia[] = [];
     let hasError = false;
 
     try {
@@ -2258,45 +2320,53 @@ const PhotoArchive = ({ images, setImages }: { images: GalleryMedia[], setImages
         const item = selectedFiles[i];
 
         try {
-          const formData = new FormData();
-          formData.append('file', item.file);
-          formData.append('title', bulkCaption || `${item.type === 'video' ? 'Video' : 'Image'} ${images.length + i + 1}`);
-          formData.append('category', bulkCategory);
-          formData.append('type', item.type);
-
-          const response = await axios.post('/api/media-library', formData, {
-            headers: {
-              'Authorization': `Bearer ${token}`,
-              'Content-Type': 'multipart/form-data'
-            },
-            onUploadProgress: (progressEvent) => {
-              const percentCompleted = Math.round((progressEvent.loaded * 100) / (progressEvent.total || 1));
-              setUploadProgress(prev => ({ ...prev, [i]: percentCompleted }));
-            }
+          const fileExtension = item.file.name.split('.').pop();
+          const fileName = `gallery/${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExtension}`;
+          const storageRef = ref(storage, fileName);
+          
+          const uploadTask = uploadBytesResumable(storageRef, item.file);
+          
+          await new Promise<void>((resolve, reject) => {
+            uploadTask.on('state_changed', 
+              (snapshot) => {
+                const progress = Math.round((snapshot.bytesTransferred / snapshot.totalBytes) * 100);
+                setUploadProgress(prev => ({ ...prev, [i]: progress }));
+              }, 
+              (error) => {
+                console.error("Storage upload error:", error);
+                reject(error);
+              }, 
+              async () => {
+                try {
+                  const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
+                  
+                  const mediaData: any = {
+                    url: downloadURL,
+                    caption: bulkCaption || `${item.type === 'video' ? 'Video' : 'Image'} ${images.length + i + 1}`,
+                    category: bulkCategory,
+                    date: new Date().toISOString().split('T')[0],
+                    type: item.type,
+                    createdAt: serverTimestamp()
+                  };
+                  
+                  if (item.type === 'video') {
+                    mediaData.thumbnail = 'https://images.unsplash.com/photo-1492724441997-5dc865305da7?auto=format&fit=crop&q=80&w=400';
+                  }
+                  
+                  await addDoc(collection(db, 'gallery'), mediaData);
+                  resolve();
+                } catch (dbError) {
+                  reject(dbError);
+                }
+              }
+            );
           });
 
-          uploadedMedia.push({
-            id: response.data.id.toString(),
-            url: response.data.url,
-            caption: response.data.title,
-            category: bulkCategory,
-            date: new Date().toISOString().split('T')[0],
-            type: item.type,
-            thumbnail: item.type === 'video' ? 'https://images.unsplash.com/photo-1492724441997-5dc865305da7?auto=format&fit=crop&q=80&w=400' : undefined
-          } as any);
         } catch (err: any) {
           console.error(`Failed to upload file ${i}:`, err);
           hasError = true;
-          if (err.response) {
-            setUploadError(`Upload failed for file ${i + 1}: ${err.response.data.error || err.message}`);
-          } else {
-            setUploadError(`An error occurred while saving file ${i + 1} to the database.`);
-          }
+          setUploadError(`Upload failed for file ${i + 1}: ${err.message || 'Unknown error'}`);
         }
-      }
-
-      if (uploadedMedia.length > 0) {
-        setImages(prev => [...prev, ...uploadedMedia]);
       }
 
       if (hasError) {
@@ -2393,7 +2463,7 @@ const PhotoArchive = ({ images, setImages }: { images: GalleryMedia[], setImages
                           <Video size={24} className="text-slate-400" />
                         </div>
                       ) : (
-                        <img src={item.preview} alt={`Preview of ${item.file.name}`} className="w-full h-full object-cover" />
+                        <img src={item.preview} alt={`Preview of ${item.file.name}`} width="200" height="200" className="w-full h-full object-cover" />
                       )}
                       
                       {uploading && uploadProgress[i] !== undefined && (
@@ -2485,7 +2555,7 @@ const PhotoArchive = ({ images, setImages }: { images: GalleryMedia[], setImages
             {item.type === 'video' ? (
               <div className="w-full h-full flex items-center justify-center bg-slate-900">
                 {item.thumbnail ? (
-                  <img src={item.thumbnail} alt={`Video thumbnail for ${item.caption}`} className="w-full h-full object-cover opacity-50" />
+                  <img src={item.thumbnail} alt={`Video thumbnail for ${item.caption}`} width="400" height="400" className="w-full h-full object-cover opacity-50" />
                 ) : (
                   <Video size={32} className="text-white/20" />
                 )}
@@ -2494,7 +2564,7 @@ const PhotoArchive = ({ images, setImages }: { images: GalleryMedia[], setImages
                 </div>
               </div>
             ) : (
-              <img src={item.url} alt={item.caption} className="w-full h-full object-cover transition-transform group-hover:scale-110" />
+              <img src={item.url} alt={item.caption} width="400" height="400" className="w-full h-full object-cover transition-transform group-hover:scale-110" />
             )}
             <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
               <button className="p-2 bg-white rounded-full text-slate-900 hover:bg-accent hover:text-white transition-colors"><Edit size={16} /></button>
@@ -2588,7 +2658,13 @@ const AssetInventory = () => {
     }
   };
 
-  if (loading) return <div className="flex justify-center p-12"><div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" /></div>;
+  if (loading) return (
+    <div className="space-y-4 py-8">
+      {[...Array(5)].map((_, i) => (
+        <div key={i} className="h-16 bg-slate-50 animate-pulse rounded-2xl border border-slate-100" />
+      ))}
+    </div>
+  );
 
   return (
     <div className="overflow-x-auto">
@@ -2846,41 +2922,54 @@ const MediaLibrary = ({ images, setImages }: { images: GalleryMedia[], setImages
     
     setUploading(true);
     setUploadProgress({});
-    const token = localStorage.getItem('token');
-    const uploadedMedia: GalleryMedia[] = [];
 
     try {
       for (let i = 0; i < selectedFiles.length; i++) {
         const item = selectedFiles[i];
-        const formData = new FormData();
-        formData.append('file', item.file);
-        formData.append('title', bulkTitle || item.file.name);
-        formData.append('category', bulkCategory);
-        formData.append('type', item.type);
-
-        const response = await axios.post('/api/media-library', formData, {
-          headers: { 
-            Authorization: `Bearer ${token}`,
-            'Content-Type': 'multipart/form-data'
-          },
-          onUploadProgress: (progressEvent) => {
-            const percentCompleted = Math.round((progressEvent.loaded * 100) / (progressEvent.total || 1));
-            setUploadProgress(prev => ({ ...prev, [i]: percentCompleted }));
-          }
+        
+        const fileExtension = item.file.name.split('.').pop();
+        const fileName = `media-library/${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExtension}`;
+        const storageRef = ref(storage, fileName);
+        
+        const uploadTask = uploadBytesResumable(storageRef, item.file);
+        
+        await new Promise<void>((resolve, reject) => {
+          uploadTask.on('state_changed', 
+            (snapshot) => {
+              const progress = Math.round((snapshot.bytesTransferred / snapshot.totalBytes) * 100);
+              setUploadProgress(prev => ({ ...prev, [i]: progress }));
+            }, 
+            (error) => {
+              console.error("Storage upload error:", error);
+              reject(error);
+            }, 
+            async () => {
+              try {
+                const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
+                
+                const mediaData: any = {
+                  url: downloadURL,
+                  caption: bulkTitle || item.file.name,
+                  category: bulkCategory,
+                  date: new Date().toISOString().split('T')[0],
+                  type: item.type,
+                  createdAt: serverTimestamp()
+                };
+                
+                if (item.type === 'video') {
+                  mediaData.thumbnail = 'https://images.unsplash.com/photo-1492724441997-5dc865305da7?auto=format&fit=crop&q=80&w=400';
+                }
+                
+                await addDoc(collection(db, 'gallery'), mediaData);
+                resolve();
+              } catch (dbError) {
+                reject(dbError);
+              }
+            }
+          );
         });
-
-        uploadedMedia.push({
-          id: response.data.id.toString(),
-          url: response.data.url,
-          caption: response.data.title,
-          category: bulkCategory,
-          date: new Date().toISOString().split('T')[0],
-          type: item.type,
-          thumbnail: item.type === 'video' ? 'https://images.unsplash.com/photo-1492724441997-5dc865305da7?auto=format&fit=crop&q=80&w=400' : undefined
-        } as any);
       }
       
-      setImages(prev => [...uploadedMedia, ...prev]);
       setShowUploadModal(false);
       setSelectedFiles([]);
       setBulkTitle('');
@@ -2898,13 +2987,10 @@ const MediaLibrary = ({ images, setImages }: { images: GalleryMedia[], setImages
       message: `Are you sure you want to delete ${name}? This action cannot be undone.`,
       onConfirm: async () => {
         try {
-          const token = localStorage.getItem('token');
-          await axios.delete(`/api/media-library/${id}`, {
-            headers: { Authorization: `Bearer ${token}` }
-          });
-          setImages(prev => prev.filter(img => img.id !== id));
+          await deleteDoc(doc(db, 'gallery', id));
+          // No need to manually update state, onSnapshot will handle it
         } catch (err) {
-          console.error("Delete failed:", err);
+          handleFirestoreError(err, OperationType.DELETE, `gallery/${id}`);
         }
       }
     });
@@ -3030,7 +3116,7 @@ const MediaLibrary = ({ images, setImages }: { images: GalleryMedia[], setImages
                 <div className="grid grid-cols-2 gap-4">
                   {selectedFiles.map((item, idx) => (
                     <div key={idx} className="relative aspect-square rounded-xl overflow-hidden border border-slate-200 bg-white group">
-                      <img src={item.preview} alt="preview" className="w-full h-full object-cover" />
+                      <img src={item.preview} alt="preview" width="200" height="200" className="w-full h-full object-cover" />
                       {uploadProgress[idx] !== undefined && (
                         <div className="absolute inset-0 bg-black/60 flex flex-col items-center justify-center p-4">
                           <div className="w-full bg-white/20 h-1.5 rounded-full overflow-hidden">
@@ -3079,7 +3165,7 @@ const MediaLibrary = ({ images, setImages }: { images: GalleryMedia[], setImages
             {item.type === 'video' ? (
               <div className="w-full h-full bg-slate-900 relative flex items-center justify-center">
                 {item.thumbnail ? (
-                  <img src={item.thumbnail} alt={item.caption} className="w-full h-full object-cover opacity-60" loading="lazy" />
+                  <img src={item.thumbnail} alt={item.caption} width="400" height="400" className="w-full h-full object-cover opacity-60" loading="lazy" />
                 ) : (
                   <Play size={32} className="text-white/40" />
                 )}
@@ -3090,7 +3176,7 @@ const MediaLibrary = ({ images, setImages }: { images: GalleryMedia[], setImages
                 </div>
               </div>
             ) : (
-              <img src={item.url} alt={item.caption} className="w-full h-full object-cover transition-transform group-hover:scale-110" loading="lazy" />
+              <img src={item.url} alt={item.caption} width="400" height="400" className="w-full h-full object-cover transition-transform group-hover:scale-110" loading="lazy" />
             )}
             <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
               <button 

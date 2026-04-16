@@ -269,11 +269,11 @@ app.post("/api/media-library", authenticate, upload.single('file'), (req: any, r
   
   try {
     db.prepare("INSERT INTO media_library (id, title, url, file_path, category, type, thumbnail, uploaded_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
-      .run(id, title || req.file.originalname, fileUrl, filePath, category || 'general', type || 'image', thumbnail || null, req.user.id);
+      .run(id, title || req.file.originalname, fileUrl, filePath, category || 'general', type || 'image', thumbnail || null, null);
     res.json({ id, url: fileUrl, title: title || req.file.originalname, type: type || 'image' });
-  } catch (err) {
+  } catch (err: any) {
     console.error("Error saving to media library:", err);
-    res.status(500).json({ error: "Failed to save to media library" });
+    res.status(500).json({ error: "Failed to save to media library: " + err.message });
   }
 });
 

@@ -13,6 +13,20 @@ const BlogPage = () => {
   const [selectedPost, setSelectedPost] = useState<any>(null);
   const [posts, setPosts] = useState<BlogPost[]>([]);
   const [loading, setLoading] = useState(true);
+  const [activeCategory, setActiveCategory] = useState('All');
+
+  // Compute unique categories from all posts
+  const categories = ['All', ...Array.from(new Set(posts.flatMap(post => {
+    const tags = Array.isArray(post.tags) ? post.tags : ((post.tags as any) || '').split(',');
+    return tags.map((t: string) => t.trim()).filter(Boolean);
+  })))];
+
+  const filteredPosts = activeCategory === 'All' 
+    ? posts 
+    : posts.filter(post => {
+        const tags = Array.isArray(post.tags) ? post.tags : ((post.tags as any) || '').split(',');
+        return tags.map((t: string) => t.trim()).includes(activeCategory);
+      });
 
   useEffect(() => {
     const q = query(
@@ -49,6 +63,8 @@ const BlogPage = () => {
           <img 
             src={selectedPost.image_url} 
             alt={selectedPost.title} 
+            width="800"
+            height="400"
             className="w-full h-[400px] object-cover rounded-[15px] shadow-2xl mb-12"
             referrerPolicy="no-referrer"
             loading="lazy"
@@ -107,7 +123,7 @@ const BlogPage = () => {
   return (
     <div className="pt-32 pb-24 px-6 bg-slate-50 min-h-screen">
       <div className="max-w-7xl mx-auto">
-        <header className="flex flex-col md:flex-row justify-between items-end gap-8 mb-16">
+        <header className="flex flex-col md:flex-row justify-between items-end gap-8 mb-8">
           <div className="max-w-2xl">
             <h1 className="text-5xl font-bold text-primary mb-4">Foundation Blog</h1>
             <p className="text-xl text-slate-600">Insights, stories, and updates from our mission to transform education in Nigeria.</p>
@@ -122,13 +138,40 @@ const BlogPage = () => {
           </div>
         </header>
 
+        <div className="flex flex-wrap gap-3 mb-12">
+          {categories.map(category => (
+            <button
+              key={category}
+              onClick={() => setActiveCategory(category)}
+              className={`px-6 py-2 rounded-full text-sm font-bold transition-all ${
+                activeCategory === category 
+                  ? 'bg-primary text-white shadow-lg' 
+                  : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'
+              }`}
+            >
+              {category}
+            </button>
+          ))}
+        </div>
+
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
           {loading ? (
-            <div className="col-span-full flex justify-center py-12">
-              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
-            </div>
-          ) : posts.length > 0 ? (
-            posts.map((post, idx) => (
+            [...Array(6)].map((_, i) => (
+              <div key={i} className="bg-white rounded-[15px] overflow-hidden shadow-xl border border-slate-100 flex flex-col animate-pulse">
+                <div className="aspect-video bg-slate-200" />
+                <div className="p-8 space-y-4">
+                  <div className="flex gap-4">
+                    <div className="h-3 bg-slate-200 rounded w-1/4" />
+                    <div className="h-3 bg-slate-200 rounded w-1/4" />
+                  </div>
+                  <div className="h-8 bg-slate-200 rounded w-3/4" />
+                  <div className="h-20 bg-slate-200 rounded w-full" />
+                  <div className="h-4 bg-slate-200 rounded w-1/3 pt-4" />
+                </div>
+              </div>
+            ))
+          ) : filteredPosts.length > 0 ? (
+            filteredPosts.map((post, idx) => (
               <motion.div
                 key={post.id}
                 initial={{ opacity: 0, y: 20 }}
@@ -141,6 +184,8 @@ const BlogPage = () => {
                   <img 
                     src={post.image_url} 
                     alt={post.title} 
+                    width="800"
+                    height="450"
                     className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
                     referrerPolicy="no-referrer"
                     loading="lazy"

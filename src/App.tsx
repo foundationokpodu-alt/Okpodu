@@ -1,4 +1,5 @@
 import React, { useState, useEffect, Component, ErrorInfo, ReactNode } from 'react';
+import { Routes, Route, useNavigate, useLocation, Link } from 'react-router-dom';
 import { 
   Menu, X, GraduationCap, Users, Heart, Calendar, Handshake, 
   BookOpen, ShieldCheck, ChevronRight, Github, 
@@ -37,80 +38,84 @@ const Navbar = ({ setView, currentView }: { setView: (view: any) => void, curren
   }, []);
 
   const navLinks = [
-    { name: 'Home', href: 'landing' },
+    { name: 'Home', href: '/' },
     { 
       name: 'About Us', 
-      href: 'about_us',
+      href: '/about-us',
       subLinks: [
-        { name: 'About Us', href: 'about_us' },
-        { name: 'Our Team', href: 'team' },
-        { name: 'Governance', href: 'trustees' },
-        { name: 'Legacy', href: 'legacy' },
+        { name: 'About Us', href: '/about-us' },
+        { name: 'Our Team', href: '/team' },
+        { name: 'Governance', href: '/trustees' },
+        { name: 'Legacy', href: '/legacy' },
       ]
     },
-    { name: 'Programs', href: 'programs_page' },
+    { name: 'Programs', href: '/programs' },
     { 
       name: 'Impact', 
-      href: 'impact',
+      href: '/impact',
       subLinks: [
-        { name: 'Our Impact', href: 'impact' },
-        { name: 'Gallery', href: 'gallery' },
-        { name: 'Events', href: 'events' },
-        { name: 'Blog', href: 'blog' },
+        { name: 'Our Impact', href: '/impact' },
+        { name: 'Gallery', href: '/gallery' },
+        { name: 'Events', href: '/events' },
+        { name: 'Blog', href: '/blog' },
       ]
     },
-    { name: 'Get Involved', href: 'partner' },
-    { name: 'Founders’ Message', href: 'founders_message' },
-    { name: 'Contact', href: 'contact' },
+    { name: 'Get Involved', href: '/partner' },
+    { name: 'Founders’ Message', href: '/founders-message' },
+    { name: 'Contact', href: '/contact' },
   ];
 
   return (
     <nav className={`fixed left-0 w-full z-50 transition-all duration-300 ${navScrolled ? 'bg-white/90 backdrop-blur-md shadow-lg py-3' : 'bg-transparent py-6'}`}>
       <div className="w-full max-w-7xl mx-auto px-6 flex justify-between items-center">
-        <button onClick={() => setView('landing')} className="flex items-center">
+        <Link to="/" className="flex items-center">
           <img 
             src="https://i.imgur.com/jAqfHme.png" 
             alt="Okpodu Foundation Logo" 
+            width="200"
+            height="64"
             className={`h-[64px] w-auto object-contain transition-all duration-300 ${navScrolled ? '' : 'brightness-0 invert'}`}
             referrerPolicy="no-referrer"
           />
-        </button>
+        </Link>
 
         {/* Desktop Nav */}
         <div className="hidden md:flex items-center gap-8">
           {navLinks.map((link) => (
             <div key={link.name} className="relative group">
-              <button 
-                onClick={() => {
-                  if (!link.subLinks) {
-                    link.href.startsWith('#') ? (window.location.hash = link.href) : setView(link.href);
-                  }
-                }}
-                className={`flex items-center gap-1 font-semibold transition-colors ${navScrolled ? 'text-primary hover:text-accent' : 'text-white hover:text-accent'}`}
-              >
-                {link.name}
-                {link.subLinks && <ChevronDown size={16} />}
-              </button>
+              {link.subLinks ? (
+                <div className={`flex items-center gap-1 font-semibold transition-colors cursor-pointer ${navScrolled ? 'text-primary hover:text-accent' : 'text-white hover:text-accent'}`}>
+                  {link.name}
+                  <ChevronDown size={16} />
+                </div>
+              ) : (
+                <Link 
+                  to={link.href}
+                  className={`flex items-center gap-1 font-semibold transition-colors ${navScrolled ? 'text-primary hover:text-accent' : 'text-white hover:text-accent'}`}
+                >
+                  {link.name}
+                </Link>
+              )}
 
               {link.subLinks && (
                 <div className="absolute top-full left-0 pt-4 opacity-0 translate-y-2 pointer-events-none group-hover:opacity-100 group-hover:translate-y-0 group-hover:pointer-events-auto transition-all duration-300">
-                  <div className="bg-white rounded-2xl shadow-2xl p-4 min-w-[200px] border border-slate-100">
+                  <div className="bg-white rounded-2xl shadow-2xl p-4 min-w-[200px] border border-slate-100 flex flex-col">
                     {link.subLinks.map((sub) => (
-                      <button
+                      <Link
                         key={sub.name}
-                        onClick={() => setView(sub.href)}
-                        className="w-full text-left px-4 py-2 text-slate-600 hover:text-primary hover:bg-slate-50 rounded-lg transition-all font-medium"
+                        to={sub.href}
+                        className="w-full text-left px-4 py-2 text-slate-600 hover:text-primary hover:bg-slate-50 rounded-lg transition-all font-medium block"
                       >
                         {sub.name}
-                      </button>
+                      </Link>
                     ))}
                   </div>
                 </div>
               )}
             </div>
           ))}
-          <button 
-            onClick={() => setView('donation')}
+          <Link 
+            to="/donation"
             className={`px-6 py-2 rounded-full font-bold transition-all flex items-center gap-2 ${
               navScrolled 
                 ? 'bg-accent text-white hover:bg-primary shadow-md' 
@@ -119,7 +124,7 @@ const Navbar = ({ setView, currentView }: { setView: (view: any) => void, curren
           >
             <Heart size={18} />
             Donate
-          </button>
+          </Link>
         </div>
 
         {/* Mobile Toggle */}
@@ -139,20 +144,23 @@ const Navbar = ({ setView, currentView }: { setView: (view: any) => void, curren
           >
             {navLinks.map((link) => (
               <div key={link.name} className="flex flex-col gap-2">
-                <button 
-                  onClick={() => {
-                    if (link.subLinks) {
-                      setActiveDropdown(activeDropdown === link.name ? null : link.name);
-                    } else {
-                      link.href.startsWith('#') ? (window.location.hash = link.href) : setView(link.href);
-                      setIsOpen(false);
-                    }
-                  }}
-                  className="text-xl font-semibold text-slate-800 flex justify-between items-center border-b border-slate-100 pb-2"
-                >
-                  {link.name}
-                  {link.subLinks && <ChevronDown size={20} className={`transition-transform duration-300 ${activeDropdown === link.name ? 'rotate-180' : ''}`} />}
-                </button>
+                {link.subLinks ? (
+                  <button 
+                    onClick={() => setActiveDropdown(activeDropdown === link.name ? null : link.name)}
+                    className="text-xl font-semibold text-slate-800 flex justify-between items-center border-b border-slate-100 pb-2"
+                  >
+                    {link.name}
+                    <ChevronDown size={20} className={`transition-transform duration-300 ${activeDropdown === link.name ? 'rotate-180' : ''}`} />
+                  </button>
+                ) : (
+                  <Link 
+                    to={link.href}
+                    onClick={() => setIsOpen(false)}
+                    className="text-xl font-semibold text-slate-800 flex justify-between items-center border-b border-slate-100 pb-2"
+                  >
+                    {link.name}
+                  </Link>
+                )}
                 
                 {link.subLinks && activeDropdown === link.name && (
                   <motion.div 
@@ -161,31 +169,27 @@ const Navbar = ({ setView, currentView }: { setView: (view: any) => void, curren
                     className="flex flex-col gap-3 pl-4 py-2"
                   >
                     {link.subLinks.map((sub) => (
-                      <button
+                      <Link
                         key={sub.name}
-                        onClick={() => {
-                          setView(sub.href);
-                          setIsOpen(false);
-                        }}
-                        className="text-lg text-slate-600 font-medium text-left"
+                        to={sub.href}
+                        onClick={() => setIsOpen(false)}
+                        className="text-lg text-slate-600 font-medium text-left block"
                       >
                         {sub.name}
-                      </button>
+                      </Link>
                     ))}
                   </motion.div>
                 )}
               </div>
             ))}
-            <button 
-              onClick={() => {
-                setView('donation');
-                setIsOpen(false);
-              }}
-              className="mt-4 bg-accent text-white py-4 rounded-xl font-bold text-xl flex items-center justify-center gap-2 shadow-lg"
+            <Link 
+              to="/donation"
+              onClick={() => setIsOpen(false)}
+              className="mt-4 bg-accent text-white py-4 rounded-xl font-bold text-xl flex items-center justify-center gap-2 shadow-lg block"
             >
               <Heart size={24} />
               Donate Now
-            </button>
+            </Link>
           </motion.div>
         )}
       </AnimatePresence>
@@ -201,6 +205,8 @@ const Hero = ({ setView }: { setView: (view: any) => void }) => {
         <img 
           src="https://images2.imgbox.com/09/35/wF5ISgxj_o.png" 
           alt="Okpodu Education & Technology Foundation banner showing our mission to empower Nigerian youth" 
+          width="1920"
+          height="1080"
           className="w-full h-full object-cover"
           referrerPolicy="no-referrer"
         />
@@ -224,18 +230,18 @@ const Hero = ({ setView }: { setView: (view: any) => void }) => {
             Established in honor of Frederick Menukun Asini Okpodu, the Foundation continues a legacy of education, service, and community advancement in Delta State, Nigeria.
           </p>
           <div className="flex flex-wrap gap-4 mb-6">
-            <button 
-              onClick={() => setView('programs_page')}
+            <Link 
+              to="/programs"
               className="btn-accent flex items-center gap-2 text-lg px-8"
             >
               Our Programs <ArrowRight size={18} />
-            </button>
-            <button 
-              onClick={() => setView('partner')}
-              className="px-8 py-3 rounded-xl border-2 border-white text-white font-semibold hover:bg-white hover:text-primary transition-all text-lg"
+            </Link>
+            <Link 
+              to="/partner"
+              className="px-8 py-3 rounded-xl border-2 border-white text-white font-semibold hover:bg-white hover:text-primary transition-all text-lg inline-block"
             >
               Get Involved
-            </button>
+            </Link>
           </div>
         </motion.div>
       </div>
@@ -319,12 +325,12 @@ const ProgramSection = ({ setView }: { setView: (view: any) => void }) => {
                 <p className="text-slate-600 mb-8 leading-relaxed line-clamp-4 flex-grow">
                   {track.description}
                 </p>
-                <button 
-                  onClick={() => setView('programs_page')}
+                <Link 
+                  to="/programs"
                   className="flex items-center gap-2 text-primary font-bold group-hover:text-accent transition-colors mt-auto"
                 >
                   Learn More <ChevronRight size={20} />
-                </button>
+                </Link>
               </motion.div>
             );
           })}
@@ -339,19 +345,21 @@ const Footer = ({ setView }: { setView: (view: any) => void }) => {
     <footer className="bg-primary text-white pt-20 pb-10">
       <div className="w-full max-w-7xl mx-auto px-6 grid md:grid-cols-5 gap-12 mb-16">
         <div className="col-span-1 md:col-span-1">
-          <button onClick={() => setView('landing')} className="flex items-center mb-6">
+          <Link to="/" className="flex items-center mb-6">
             <img 
               src="https://i.imgur.com/jAqfHme.png" 
               alt="Okpodu Foundation Logo" 
+              width="200"
+              height="64"
               className="h-[64px] w-auto object-contain brightness-0 invert"
               referrerPolicy="no-referrer"
             />
-          </button>
+          </Link>
           <p className="text-white/60 leading-relaxed mb-8">
             Honouring the legacies of Frederick Menuku Asini Okpodu and William Eyimofe Asini Okpodu by empowering the next generation of Nigerian leaders.
           </p>
           <div className="flex gap-4">
-            <a href="https://www.facebook.com/okpodufoundation" target="_blank" rel="noopener noreferrer" className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center hover:bg-accent transition-colors" title="Facebook"><Facebook size={20} /></a>
+            <a href="https://www.facebook.com/profile.php?id=61580748655736" target="_blank" rel="noopener noreferrer" className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center hover:bg-accent transition-colors" title="Facebook"><Facebook size={20} /></a>
             <a href="https://www.instagram.com/okpodufoundation/" target="_blank" rel="noopener noreferrer" className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center hover:bg-accent transition-colors" title="Instagram"><Instagram size={20} /></a>
             <a href="https://x.com/okpodu_foundatn" target="_blank" rel="noopener noreferrer" className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center hover:bg-accent transition-colors" title="X">
               <svg 
@@ -375,17 +383,17 @@ const Footer = ({ setView }: { setView: (view: any) => void }) => {
           <h4 className="font-bold text-lg mb-6">Quick Links</h4>
           <div className="grid grid-cols-2 gap-8 text-white/60 text-left">
             <ul className="space-y-4 text-left">
-              <li className="text-left"><button onClick={() => setView('landing')} className="hover:text-accent transition-colors text-left">Home</button></li>
-              <li className="text-left"><button onClick={() => setView('about_us')} className="hover:text-accent transition-colors text-left">About Us</button></li>
-              <li className="text-left"><button onClick={() => setView('programs_page')} className="hover:text-accent transition-colors text-left">Programs</button></li>
-              <li className="text-left"><button onClick={() => setView('impact')} className="hover:text-accent transition-colors text-left">Impact</button></li>
-              <li className="text-left"><button onClick={() => setView('trustees')} className="hover:text-accent transition-colors text-left">Governance</button></li>
+              <li className="text-left"><Link to="/" className="hover:text-accent transition-colors text-left block">Home</Link></li>
+              <li className="text-left"><Link to="/about-us" className="hover:text-accent transition-colors text-left block">About Us</Link></li>
+              <li className="text-left"><Link to="/programs" className="hover:text-accent transition-colors text-left block">Programs</Link></li>
+              <li className="text-left"><Link to="/impact" className="hover:text-accent transition-colors text-left block">Impact</Link></li>
+              <li className="text-left"><Link to="/trustees" className="hover:text-accent transition-colors text-left block">Governance</Link></li>
             </ul>
             <ul className="space-y-4 text-left">
-              <li className="text-left"><button onClick={() => setView('legacy')} className="hover:text-accent transition-colors text-left">Legacy</button></li>
-              <li className="text-left"><button onClick={() => setView('partner')} className="hover:text-accent transition-colors text-left">Get Involved</button></li>
-              <li className="text-left"><button onClick={() => setView('founders_message')} className="hover:text-accent transition-colors text-left">Founders’ Message</button></li>
-              <li className="text-left"><button onClick={() => setView('contact')} className="hover:text-accent transition-colors text-left">Contact</button></li>
+              <li className="text-left"><Link to="/legacy" className="hover:text-accent transition-colors text-left block">Legacy</Link></li>
+              <li className="text-left"><Link to="/partner" className="hover:text-accent transition-colors text-left block">Get Involved</Link></li>
+              <li className="text-left"><Link to="/founders-message" className="hover:text-accent transition-colors text-left block">Founders’ Message</Link></li>
+              <li className="text-left"><Link to="/contact" className="hover:text-accent transition-colors text-left block">Contact</Link></li>
             </ul>
           </div>
         </div>
@@ -481,7 +489,7 @@ const TeamPage = () => (
           className="bg-white p-8 md:p-12 rounded-[3rem] shadow-xl border border-slate-100 flex flex-col md:flex-row gap-8 items-center md:items-start"
         >
           <div className="w-48 h-48 md:w-64 md:h-64 bg-slate-100 rounded-[2rem] overflow-hidden shrink-0 shadow-lg">
-            <img src={member.img} alt={member.name} className={`w-full h-full object-cover ${(member as any).imagePosition || 'object-center'}`} loading="lazy" />
+            <img src={member.img} alt={member.name} width="400" height="400" className={`w-full h-full object-cover ${(member as any).imagePosition || 'object-center'}`} loading="lazy" />
           </div>
           <div className="flex-grow text-center md:text-left">
             <h3 className="text-3xl font-bold text-primary mb-2">{member.name}</h3>
@@ -609,6 +617,8 @@ const TrusteesPage = () => {
                 <img 
                   src={trustee.image} 
                   alt={trustee.name} 
+                  width="400"
+                  height="400"
                   className={`w-full h-full object-cover ${trustee.imagePosition || 'object-center'}`}
                   referrerPolicy="no-referrer"
                   loading="lazy"
@@ -1067,6 +1077,8 @@ const FoundersMessagePage = () => (
             <img 
               src="https://images2.imgbox.com/fa/cb/3oUm25ru_o.jpeg" 
               alt="Chairman Akpesiri Emmanuel Okpodu" 
+              width="800"
+              height="800"
               className="w-full h-full object-cover"
               referrerPolicy="no-referrer"
               loading="lazy"
@@ -1142,6 +1154,8 @@ const LegacyPage = ({ setView }: { setView: (view: any) => void }) => (
             <img 
               src="https://images2.imgbox.com/96/35/Wyow2BxL_o.jpg" 
               alt="Frederick Menukun Asini Okpodu" 
+              width="600"
+              height="800"
               className="w-full h-full object-cover"
               referrerPolicy="no-referrer"
               loading="lazy"
@@ -1167,6 +1181,8 @@ const LegacyPage = ({ setView }: { setView: (view: any) => void }) => (
             <img 
               src="https://images2.imgbox.com/25/4b/vKLIbCQu_o.jpg" 
               alt="William Eyimofe Asini Okpodu" 
+              width="600"
+              height="800"
               className="w-full h-full object-cover"
               referrerPolicy="no-referrer"
               loading="lazy"
@@ -1897,52 +1913,67 @@ export default function App() {
 }
 
 function AppContent() {
-  const [view, setView] = useState<'landing' | 'team' | 'trustees' | 'programs_page' | 'events' | 'blog' | 'partner' | 'about_us' | 'gallery' | 'what_we_do' | 'where_we_work' | 'admin' | 'locality_profile' | 'school_profile' | 'contact' | 'legacy' | 'founders_message' | 'impact' | 'donation' | 'donation_success' | 'volunteer'>('landing');
-  
+  const navigate = useNavigate();
+  const location = useLocation();
+
+  const setView = (viewName: string) => {
+    if (viewName === 'landing') navigate('/');
+    else if (viewName === 'programs_page') navigate('/programs');
+    else if (viewName === 'what_we_do') navigate('/what-we-do');
+    else if (viewName === 'where_we_work') navigate('/where-we-work');
+    else if (viewName === 'locality_profile') navigate('/locality-profile');
+    else if (viewName === 'school_profile') navigate('/school-profile');
+    else if (viewName === 'about_us') navigate('/about-us');
+    else if (viewName === 'founders_message') navigate('/founders-message');
+    else if (viewName === 'donation_success') navigate('/donation-success');
+    else navigate(`/${viewName}`);
+  };
+
+  let view = 'landing';
+  const path = location.pathname;
+  if (path === '/') view = 'landing';
+  else if (path === '/programs') view = 'programs_page';
+  else if (path === '/what-we-do') view = 'what_we_do';
+  else if (path === '/where-we-work') view = 'where_we_work';
+  else if (path === '/locality-profile') view = 'locality_profile';
+  else if (path === '/school-profile') view = 'school_profile';
+  else if (path === '/about-us') view = 'about_us';
+  else if (path === '/founders-message') view = 'founders_message';
+  else if (path === '/donation-success') view = 'donation_success';
+  else view = path.substring(1);
+
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [galleryMedia, setGalleryMedia] = useState<GalleryMedia[]>(GALLERY_MEDIA);
+  const [loadingGallery, setLoadingGallery] = useState(true);
 
   useEffect(() => {
-    const fetchGalleryMedia = async () => {
-      try {
-        const response = await axios.get('/api/media-library');
-        const media = response.data.map((item: any) => ({
-          id: item.id,
-          url: item.url,
-          caption: item.title,
-          category: item.category,
-          date: item.created_at ? new Date(item.created_at).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
-          type: item.type || (item.url.match(/\.(mp4|webm|ogg|mov)$/i) ? 'video' : 'image'),
-          thumbnail: item.thumbnail || (item.url.match(/\.(mp4|webm|ogg|mov)$/i) ? 'https://images.unsplash.com/photo-1492724441997-5dc865305da7?auto=format&fit=crop&q=80&w=400' : undefined)
+    const fetchGalleryMedia = () => {
+      setLoadingGallery(true);
+      const q = query(collection(db, 'gallery'), orderBy('createdAt', 'desc'));
+      const unsubscribe = onSnapshot(q, (snapshot) => {
+        const media = snapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data()
         })) as GalleryMedia[];
         
         if (media.length > 0) {
           setGalleryMedia(media);
         }
-      } catch (err) {
-        console.error("Failed to fetch gallery media from API:", err);
-        // Fallback to Firestore for now if API fails
-        const q = query(collection(db, 'gallery'), orderBy('createdAt', 'desc'));
-        const unsubscribe = onSnapshot(q, (snapshot) => {
-          const media = snapshot.docs.map(doc => ({
-            id: doc.id,
-            ...doc.data()
-          })) as GalleryMedia[];
-          
-          if (media.length > 0) {
-            setGalleryMedia(media);
-          }
-        });
-        return () => unsubscribe();
-      }
+        setLoadingGallery(false);
+      }, (error) => {
+        console.error("Firestore gallery fetch error:", error);
+        setLoadingGallery(false);
+      });
+      return unsubscribe;
     };
 
-    fetchGalleryMedia();
+    const unsubscribe = fetchGalleryMedia();
+    return () => unsubscribe();
   }, []);
 
   useEffect(() => {
     window.scrollTo(0, 0);
-  }, [view]);
+  }, [location.pathname]);
 
   const renderContent = () => {
     switch (view) {
@@ -1985,7 +2016,7 @@ function AppContent() {
       case 'gallery': return (
         <>
           <SEO title="Media Gallery" description="Capturing moments of impact, learning, and community growth across Nigeria." />
-          <GalleryPage images={galleryMedia} />
+          <GalleryPage images={galleryMedia} loading={loadingGallery} />
         </>
       );
       case 'what_we_do': return (
@@ -2216,6 +2247,8 @@ function AppContent() {
                       <img 
                         src="https://images2.imgbox.com/b3/a4/aAQVaHgi_o.jpeg" 
                         alt="Students in Nigeria engaged in collaborative classroom learning supported by OETF" 
+                        width="800"
+                        height="600"
                         className="rounded-[2rem] shadow-2xl relative z-10"
                         referrerPolicy="no-referrer"
                       />
@@ -2291,6 +2324,8 @@ function AppContent() {
                   <img 
                     src="https://images2.imgbox.com/8b/a6/CYuPVTyf_o.jpeg" 
                     alt="A classroom environment in an underserved community highlighting the need for educational support" 
+                    width="800"
+                    height="600"
                     className="block w-[60%] mx-auto rounded-[2rem] shadow-2xl"
                     referrerPolicy="no-referrer"
                   />
